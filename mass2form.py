@@ -289,6 +289,7 @@ edf=pd.DataFrame([i.replace("[",",").split(',') for i in  composition.split("]")
 
 edf["low"]=pd.to_numeric(edf["low"],errors='coerce')
 edf["high"]=pd.to_numeric(edf["high"],errors='coerce')
+edf=edf.ffill(axis=1)
 
 if edf.isnull().sum().sum(): #fill in missing values from composotion string.
     print("Warning! missing element maxima detected in composition. Imputing from maximum mass (this might affect performance)")
