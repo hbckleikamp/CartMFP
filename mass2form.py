@@ -231,6 +231,9 @@ else:  # retrieve up to date mass table from nist
 
     mdf.to_csv("mass_table.tsv", sep="\t")
 
+mdf.loc["+"]=-emass
+mdf.loc["-"]=emass
+
 #%% read input masses
 
 print("Reading table: "+str(input_file))
