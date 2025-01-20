@@ -301,25 +301,21 @@ lm=len(masses)
 
 #Add adducts
 if mode=="":                   adducts=[]
-if "n" in mode or "-" in mode: adducts=[a for a in adducts  if "-" in a]
-if "p" in mode or "+" in mode: adducts=[a for a in adducts  if "-" not in a]
-if (not len(adducts)) & ("n" in mode or "-" in mode): adducts=["-"]
-if (not len(adducts)) & ("p" in mode or "+" in mode): adducts=["+"]
+if "n" in mode or "-" in mode: adducts=[a for a in adducts  if a.count("-")==1]
+if "p" in mode or "+" in mode: adducts=[a for a in adducts  if a.count("-")!=1]
+if (not len(adducts)) & ("n" in mode or "-" in mode): adducts=["+-"]
+if (not len(adducts)) & ("p" in mode or "+" in mode): adducts=["--"]
 
 #adduct sign
 adduct_sign    =[-1  if a[0]=="-" else  1  for a in adducts]
 adduct_sign_str=["-" if a[0]=="-" else "+" for a in adducts]
-adducts=pd.Series(adducts).str.lstrip("+-").tolist()
 
-if (not len(adducts)) & ("n" in mode or "-" in mode): adducts=["-"]
-if (not len(adducts)) & ("p" in mode or "+" in mode): adducts=["+"]
-adduct_mass=[getMz(a) for a in adducts]
+adduct_mass=[getMz(a[1:]) for a in adducts]
 if "n" in mode or "-" in mode:  print("mode is negative,")
 if "p" in mode or "+" in mode:  print("mode is positive,")
 
 if len(mode) & len(adducts): 
-    message="adducts used: "+", ".join([adduct_sign_str[ix]+i+" ("+str(adduct_mass[ix].round(4)*adduct_sign[ix]) +") " for ix,i in enumerate(adducts)])
-    print(message.replace("--","+"))
+    print("adducts used: "+", ".join([i+" ("+str(adduct_mass[ix].round(4)*adduct_sign[ix]) +") " for ix,i in enumerate(adducts)]))
 
 if len(adducts):
     i1,i2,i3=np.arange(lm).tolist()*len(adducts), masses.tolist()*len(adducts), np.repeat(np.array(adducts),lm)
@@ -331,6 +327,7 @@ if len(adducts):
     
 else:
     mass_df=pd.DataFrame([np.arange(lm),masses],index=["index","input_mass"]).T
+    
 
 #%% MFP
 
