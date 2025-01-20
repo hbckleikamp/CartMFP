@@ -55,8 +55,10 @@ min_rdbe = ""           # rdbe filtering default range -5,80 (max rdbe will depe
 max_rdbe = ""
 
 mode = "pos"                 # ionization mode. Options: " ", "positive", "negative" # positive substracts electron mass, negative adds electron mass, "" doesn't add anything
-adducts=["+H+","+Na+","+K+", # default positive adducts 
-         "-H+","+Cl-"]       # default negative adducts
+adducts=["--", "+H+","+Na+","+K+", # default positive adducts 
+         "+-", "-H+","+Cl-"]       # default negative adducts
+
+
 
 #performance arguments
 ppm = 5                 # ppm for formula prediction
