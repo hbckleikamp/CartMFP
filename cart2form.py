@@ -299,39 +299,220 @@ if (masses > max_mass).sum():
 print("")
 lm=len(masses)
 
-#Add adducts
+### Add adducts ###
 if mode=="":                   adducts=[]
 if "n" in mode or "-" in mode: adducts=[a for a in adducts  if a.count("-")==1]
 if "p" in mode or "+" in mode: adducts=[a for a in adducts  if a.count("-")!=1]
 if (not len(adducts)) & ("n" in mode or "-" in mode): adducts=["+-"]
 if (not len(adducts)) & ("p" in mode or "+" in mode): adducts=["--"]
 
-#adduct sign
-adduct_sign    =[-1  if a[0]=="-" else  1  for a in adducts]
-adduct_sign_str=["-" if a[0]=="-" else "+" for a in adducts]
 
+adduct_sign    =[-1  if a[0]=="-" else  1  for a in adducts]
 adduct_mass=[getMz(a[1:]) for a in adducts]
+
+adf=pd.DataFrame([adducts,adduct_mass]).T
+adf.columns=["adduct","adduct_mass"]
+adf["adduct_mass"]=adf["adduct_mass"]*adduct_sign
+acomps=pd.concat([parse_form(a[1:]) for a in adducts]).fillna(0)*np.array(adduct_sign).reshape(-1,1)
+[acomps.pop(i) for i in ["+","-"] if i in acomps.columns]
+acomps.index=adducts
+# adf[acomps.columns]=(acomps*np.array(adduct_sign).reshape(-1,1)).values
+
 if "n" in mode or "-" in mode:  print("mode is negative,")
 if "p" in mode or "+" in mode:  print("mode is positive,")
 
 if len(mode) & len(adducts): 
     print("adducts used: "+", ".join([i+" ("+str(adduct_mass[ix].round(4)*adduct_sign[ix]) +") " for ix,i in enumerate(adducts)]))
+    
 
 if len(adducts):
     i1,i2,i3=np.arange(lm).tolist()*len(adducts), masses.tolist()*len(adducts), np.repeat(np.array(adducts),lm)
-    mass_df=pd.DataFrame([i1,i2,i3],index=["index","input_mass","adduct"]).T
-    
-    adduct_cats=np.repeat(adducts,lm)
-    adduct_masses=np.repeat(adduct_mass,lm)
-    masses=np.hstack([masses-adduct_sign[ix]*adduct_mass[ix] for ix,_ in enumerate(adducts)])
+    mass_df=pd.DataFrame([i1,i2,i3],index=["index","input_mass","adduct"]).T.merge(adf,on="adduct")
     
 else:
     mass_df=pd.DataFrame([np.arange(lm),masses],index=["index","input_mass"]).T
+    mass_df["adduct_mass"]=0
+    mass_df["adduct"]=""
     
 
-#%% MFP
+### Add charges ###
+mass_df["charge"]=[charges]*len(mass_df)
+mass_df=mass_df.explode("charge")
+mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]*mass_df["charge"]
 
-start_time=time.time()
+mass_df=mass_df[mass_df["mass"]<max_mass].reset_index(drop=True) #filter on max mass
+
+
+adduct_cats=mass_df["adduct"].values.flatten()
+charge_cats=mass_df["charge"].values
+masses=mass_df["mass"].values
+
+
+# %% Construct MFP space
+
+start_time = time.time()
+
+
+# % Construct elemental space dataframe
+edf=pd.DataFrame([i.replace("[",",").split(',') for i in  composition.split("]")[:-1]],columns=["symbol","low","high"]).set_index("symbol")
+
+edf["low"]=pd.to_numeric(edf["low"],errors='coerce')
+edf["high"]=pd.to_numeric(edf["high"],errors='coerce')
+edf=edf.ffill(axis=1)
+
+if edf.isnull().sum().sum(): #fill in missing values from composotion string.
+    print("Warning! missing element maxima detected in composition. Imputing from maximum mass (this might affect performance)")
+    edf.loc[edf["high"].isnull(),"high"]=(max_mass/mdf.loc[edf.index]).astype(int).values[edf["high"].isnull()].flatten()
+
+
+edf[["low","high"]]=edf[["low","high"]].fillna(0).astype(int)
+edf = edf.sort_values(by="high", ascending=False)
+edf["arr"] = edf.apply(lambda x: np.arange(
+    x.loc["low"], x.loc["high"]+1), axis=1)
+edf["mass"] = (mdf.loc[edf.index]*mass_blowup).astype(np.uint64)
+elements=edf.index.values
+
+comp_bitlim=np.uint8
+if edf.high.max()>255: 
+    comp_bitlim=np.uint16
+    print("element cound above 255 detected, using 16bit compositions")
+    print("")
+
+m2g_bitlim=np.uint32
+bmax=max_mass*mass_blowup
+if bmax>=4294967296:
+   m2g_bitlim=np.uint64 
+
+# % Determine number of element batches
+mm = psutil.virtual_memory()
+dpoints = np.array([10, 100, 1e3, 1e4, 1e5, 1e6]).astype(int)
+
+# size of uint8 array
+onesm = np.array([sys.getsizeof(np.ones(i).astype(comp_bitlim)) for i in dpoints])
+a8, b8 = np.linalg.lstsq(np.vstack(
+    [dpoints, np.ones(len(dpoints))]).T, onesm.reshape(-1, 1), rcond=None)[0]
+
+# size of uint64 array
+onesm = np.array([sys.getsizeof(np.ones(i).astype(np.uint64))
+                 for i in dpoints])
+a64, b64 = np.linalg.lstsq(np.vstack(
+    [dpoints, np.ones(len(dpoints))]).T, onesm.reshape(-1, 1), rcond=None)[0]
+
+rows = 1
+memories = []
+cols = len(edf)
+for i in edf.high:
+    rows *= i+1
+    s_uint8 = rows*cols*a8[0]+b8[0]
+    s_uint64 = rows*a64[0]+b64[0]
+    memories.append(s_uint8+s_uint64)
+
+if maxmem<=1: mem_cols = (np.argwhere(np.array(memories) < (mm.free*maxmem))[-1]+1)[0]
+if maxmem>1:  mem_cols = (np.argwhere(np.array(memories) <           maxmem)[-1]+1)[0]
+
+
+need_batches = len(edf)-mem_cols
+emem = edf.iloc[:mem_cols]
+
+# construct output path
+Cartesian_output_file = "".join(emem.index+"["+emem.low.astype(str)+","+emem.high.astype(
+    str)+"]")+"_b"+str(mass_blowup)+"max"+str(int(max_mass))+"rdbe"+str(min_rdbe)+"_"+str(max_rdbe) 
+
+if not len(Cartesian_output_folder):
+    Cartesian_output_folder = os.getcwd()
+else:
+    if not os.path.exists(Cartesian_output_folder):
+        os.makedirs(Cartesian_output_folder)
+
+m2g_output_path = str(
+    Path(Cartesian_output_folder, Cartesian_output_file))+"_m2g.npy"
+comp_output_path = str(
+    Path(Cartesian_output_folder, Cartesian_output_file))+"_comp.npy"
+mass_output_path = str(
+    Path(Cartesian_output_folder, Cartesian_output_file))+"_mass.npy"
+
+
+print("Output Cartesian file:")
+print(Cartesian_output_file)
+print("")
+
+# #chemical filtering for RDBE (it is int rounded so pick a generous range)
+# #RDBE = X -Y/2+Z/2+1 where X=C Y=H or halogen, Z=N or P https://fiehnlab.ucdavis.edu/projects/seven-golden-rules/ring-double-bonds
+Xrdbe = np.argwhere(edf.index == "C").flatten()
+Yrdbe = np.argwhere(edf.index.isin(["H", "F", "Cl", "Br", "I"]))[0].flatten()
+Zrdbe = np.argwhere(edf.index.isin(["N", "P"])).flatten()
+
+bmax = int(np.round(max_mass*mass_blowup, 0))
+if not os.path.exists(m2g_output_path) or not os.path.exists(mass_output_path) or not os.path.exists(comp_output_path) or debug:
+
+
+    # % Compute base cartesian
+    print("constructing base cartesian:")
+    arrays = edf.arr.values[:mem_cols].tolist()
+    zm = cartesian(arrays)
+
+    mass = np.zeros(len(zm), dtype=np.uint64)
+    for i in range(zm.shape[1]):
+        mass += edf.mass.values[i]*zm[:, i].astype(np.uint64)
+
+    # filter base cartesian on maximum mass
+    if max_mass:  # (recommended!)
+        zm = zm[mass <= max_mass*mass_blowup]
+        mass = mass[mass <= max_mass*mass_blowup]
+
+
+    if zm.max()<256: comp_bitlim=np.uint8
+        
+
+    # add room for remaining columns
+    zm = np.hstack(
+        [zm, np.zeros([len(zm), len(edf)-mem_cols], dtype=comp_bitlim)])
+    s = np.argsort(mass)
+    mass, zm = mass[s], zm[s]
+
+    # save and delete to make more memory available
+    if not os.path.exists(comp_output_path):
+        np.save(comp_output_path, zm)
+        
+    if not os.path.exists(mass_output_path):
+        np.save(mass_output_path, mass)
+
+    del zm
+
+    # create index mappings
+    sp = np.argwhere(np.diff(mass) > 0)[:, 0]+1
+    six = mass[np.hstack([[0], sp])]
+
+    lbrb=np.hstack([0,np.argwhere(np.diff(mass))[:,0]+1,len(mass)])
+    emp = np.zeros([bmax+1,2], dtype=m2g_bitlim) 
+    emp[six] = np.vstack([lbrb[:-1],lbrb[1:]]).T
+    emp=np.hstack([emp,(emp[:,1]-emp[:,0]).reshape(-1,1)])
+
+    if not os.path.exists(m2g_output_path):
+        np.save(m2g_output_path, emp)
+        
+    del six, sp, s, mass  # or write as function?
+
+else:
+    print("Cartesian file found")
+    emp = np.load(m2g_output_path)
+
+
+# compute cartesian batches
+print("")
+if need_batches:
+
+    batches = reduce(operator.mul, edf.iloc[mem_cols:]["high"].values+1, 1)
+    print("array too large for memory, performing cartesian product in batches: "+str(batches))
+
+    # compute cartesian product of the remaining elements
+    arrays = edf.arr.values[mem_cols:].tolist()
+    print("")
+    print("computing remaining cartesian:")
+    bm = cartesian(arrays)
+print("")
+
+# %% MFP
 
 print("Loading index files")
 print("")
@@ -341,7 +522,7 @@ peak_mass_high = (peak_mass*(1+ppm/1e6)).astype(np.uint64)
 arrs = [np.arange(i, peak_mass_high[ix]+1).astype(np.uint64)
         for ix, i in enumerate(peak_mass_low)]  # integer mass range
 
-a_ix = np.hstack([[ix]*len(i) for ix, i in enumerate(arrs)]) #not really sure about what is going on here
+a_ix = np.hstack([[ix]*len(i) for ix, i in enumerate(arrs)])
 um=np.hstack(arrs)
 
 #filter ppm
@@ -349,10 +530,12 @@ ppmd=abs((peak_mass[a_ix].astype(np.int64)-um.astype(np.int64))/peak_mass[a_ix].
 um,a_ix=um[ppmd],a_ix[ppmd]
 
 
-comps = np.load(composition_file, mmap_mode="r")
-emp   = np.load(mass_index_file, mmap_mode="r")
+#parse_comp output path
 
-#determine RDBE columns on filename
+
+comps = np.load(comp_output_path, mmap_mode="r")
+mass  = np.load(mass_output_path, mmap_mode="r")
+
 print("Cartesian elapsed time: "+str(time.time()-start_time))
 print("")
 
@@ -360,59 +543,87 @@ print("")
 # Cartesian batched formula prediction
 start_time = time.time()
 
+if need_batches:
 
-#add batches?
+    print("MFP batches:")
 
-x = emp[um]
-q2 = x[:,2]>0
-x = x[q2]
-q=np.hstack([np.arange(i[0],i[1]) for i in x[:,:2]]).astype(int) #memmap masses
-cs= comps[q]
-ms=np.sum(cs*mdf.loc[elements].values.reshape(1,-1),axis=1)
-us=np.repeat(a_ix[q2],x[:,2].astype(int))
+    am = (bm*edf[mem_cols:].mass.values).sum(axis=1)  # added mass
+    us, ms, cs = [], [], []
 
+    for ib, b in enumerate(bm):
+        print(ib)
+        q1 = um>am[ib]     # non negative mass 
+        cm = um-am[ib]     # corrected mass
+        cm[~q1]=0
+        x = emp[cm]        # get indices of compositions
+        q2 = x[:,2]>0      # has composition
+        x = x[(q1 & q2)]
 
-#check if something goes wrong here
+        if len(x):
+            q=np.hstack([np.arange(i[0],i[1]) for i in x[:,:2]]).astype(int) #memmap masses
+            c1= comps[q]
+                 
+            miss_col=len(edf)-c1.shape[1]
+            if miss_col: c1=np.hstack([c1,np.zeros([len(c1),miss_col],dtype=comp_bitlim)])
+         
+            c1[:, mem_cols:] = b
+            cs.append(c1)
+            ms.append(mass[q]+am[ib])
+            us.append(np.repeat(a_ix[(q1 & q2)],x[:,2].astype(int))) 
 
-ja=np.vstack([np.repeat(um[q2],x[:,2])/mass_blowup,ms]).T #test
-#-> sorting goes wrong!
+            #test
+            orig=peak_mass[np.repeat(a_ix[(q1 & q2)],x[:,2].astype(int))].astype(np.int64)
+            pred=mass[q]+am[ib].astype(np.int64)
+            ppmd=abs((orig-pred)/pred*1e6)
+            if (abs((orig-pred)/pred*1e6)>ppm).sum():
+                ""+1
+            
+            
+
+    if len(ms):
+        ms, cs, us = np.hstack(ms), np.vstack(cs), np.hstack(us)
+
+else:  # no Cartesian batches
+    x = emp[um]
+    q2 = x[:,2]>0
+    x = x[q2]
+    q=np.hstack([np.arange(i[0],i[1]) for i in x[:,:2]]).astype(int) #memmap masses
+    cs, ms = comps[q], mass[q]
+    us=np.repeat(a_ix[q2],x[:,2].astype(int))
 
 
 # Chemical filtering
 flag_rdbe_min = type(min_rdbe) == float or type(min_rdbe) == int
 flag_rdbe_max = type(max_rdbe) == float or type(max_rdbe) == int
 
-q=np.ones(len(cs),dtype=bool)
-if max_mass: q=q & (ms<=bmax)
 
-#RDBE filtering
-rdbe=np.ones(len(cs))#,dtype=np.int8) #dtype !
-if len(Xrdbe): rdbe+=np.sum(cs[:,Xrdbe],axis=1) 
-if len(Yrdbe): rdbe-=np.sum(cs[:,Yrdbe],axis=1)/2  
-if len(Zrdbe): rdbe+=np.sum(cs[:,Zrdbe],axis=1)/2 
-            
-if   flag_rdbe_min & flag_rdbe_max: q=q & (rdbe>=min_rdbe) &( rdbe<=max_rdbe)
-elif flag_rdbe_min:                 q=q & (rdbe>=min_rdbe)
-elif flag_rdbe_max:                 q=q & (rdbe<=max_rdbe)
+if flag_rdbe_min or flag_rdbe_max:
+    print("")
+    print("RDBE filtering: min: "+str(min_rdbe)+", max: "+str(max_rdbe))
 
-#elemental composition filering
-if composition:
-    for i in medf.index:
-        ev=cs[:,np.argwhere(fedf.index==i)[:,0]].flatten()
-        elow,ehigh=fedf.loc[i,"low"],fedf.loc[i,"high"]
-        q=q & ev>=elow & ev<=ehigh
+    #make to float
+    rdbe = np.ones(len(cs), dtype=np.int8)  # filter on rdbe (int rounded)
+    if len(Xrdbe):
+        rdbe += cs[:, Xrdbe][:, 0]
+    if len(Yrdbe):
+        rdbe -= (cs[:, Yrdbe][:, 0]/2).astype(int) # not fully accurate because of int roundoff
+    if len(Zrdbe):
+        rdbe += (cs[:, Zrdbe][:, 0]/2).astype(int) # not fully accurate because of int roundoff
 
+    if flag_rdbe_min & flag_rdbe_max:
+        q = (rdbe >= min_rdbe) & (rdbe <= max_rdbe)
+    elif flag_rdbe_min:
+        q = (rdbe >= min_rdbe)
+    elif flag_rdbe_max:
+        q = (rdbe <= max_rdbe)
 
+    ms, cs, us = ms[q], cs[q], us[q]
 
-ms, cs, us = ms[q], cs[q], us[q]
-#ms+=adduct_masses[us] #add adduct mass
 
 print("Picking best "+str(top_candidates)+" candidates.")
 
-pm=peak_mass[us]/mass_blowup 
-ppm_diff=(pm-ms)/pm*1e6
-#include adduct mass
-
+pm=peak_mass[us] 
+ppm_diff=(pm.astype(np.int64)-ms.astype(np.int64))/pm.astype(np.int64)*1e6
 
 appm_diff=abs(ppm_diff)
 s=np.lexsort((appm_diff,us))
@@ -421,30 +632,35 @@ s=np.lexsort((appm_diff,us))
 group_ixs=np.argwhere(np.diff(us[s]))[:,0]+1 
 s=s[np.hstack([i[:top_candidates] for i in  np.array_split(np.arange(len(s)),group_ixs)])]
 pm, ms, cs, ppm_diff = pm[s], ms[s], cs[s], ppm_diff[s]
-res=pd.DataFrame(np.hstack([pm.reshape(-1,1),
-                            ms.reshape(-1,1),
+res=pd.DataFrame(np.hstack([pm.reshape(-1,1)/mass_blowup,
+                            ms.reshape(-1,1)/mass_blowup,
                             ppm_diff.reshape(-1,1),
-                            cs]),columns=["mass","pred_mass","ppm","adduct"]+elements.tolist())
+                            cs]),columns=["mass","pred_mass","ppm"]+elements.tolist())
+
+
 
 
 print("")
 print("MFP elapsed time: "+str(time.time()-start_time))
 
+res=pd.concat([mass_df.iloc[us[s],:].reset_index(drop=True),res[["pred_mass","ppm"]+elements.tolist()]],axis=1)
 
-#%% writing output
+#add adduct formulas
+res[list(set(acomps.columns)-set(elements))]=0
+res[acomps.columns]+=acomps.loc[res.adduct,acomps.columns].values
 
-res["index"]=us[s]%lm
-if len(adducts):
-    res["adduct"]=adduct_cats[us[s]].reshape(-1,1)
-    if keep_all: res=mass_df.sort_values(by="index").merge(res,how="left" ,on=["index","adduct"])
-    else:        res=mass_df.sort_values(by="index").merge(res,how="inner",on=["index","adduct"])
-elif keep_all:   res=mass_df.merge(res,how="outer",on="index").sort_values(by="index")
+if keep_all: #add unidentified masses
+    missing_index=list(set(mass_df["index"])-set(res.index))
+    missing_rows=mass_df[["index","input_mass"]].drop_duplicates().set_index("index").loc[missing_index,:].reset_index()
+    missing_rows[res.columns[2:]]=0
+    missing_rows["adduct"]=""
+    res=pd.concat([res,missing_rows])
     
-    
+res["appm"]=res["ppm"].abs()
+res=res.sort_values(by=["index","charge","appm"]).reset_index(drop=True)   
 
 #%%
 if not os.path.exists(MFP_output_folder): os.makedirs(MFP_output_folder)
 MFP_outpath=Path(MFP_output_folder,MFP_output_filename)
 res.to_csv(MFP_outpath)
-
 
