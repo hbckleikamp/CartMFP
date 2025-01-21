@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 """
+Created on Tue Jan 21 16:35:44 2025
+
+@author: hkleikamp
+"""
+
+# -*- coding: utf-8 -*-
+"""
 Created on Mon Oct 21 12:54:59 2024
 
 @author: hkleikamp
@@ -39,8 +46,9 @@ min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depe
 max_rdbe = 80
 
 mode = "pos"                 # ionization mode. Options: " ", "positive", "negative" # positive substracts electron mass, negative adds electron mass, "" doesn't add anything
-adducts=["+H+","+Na+","+K+", # default positive adducts 
-         "-H+","+Cl-"]       # default negative adducts
+adducts =["--","+H+","+Na+","+K",      # default positive adducts "+H+","+Na+","+K"
+         "+-","Cl-"]            # default negative adducts              "+-", "Cl-" 
+charges=[1]                            # default: [1]
 
 #performance arguments
 ppm = 5                 # ppm for formula prediction
@@ -86,10 +94,11 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     parser.add_argument("-min_rdbe",  default=-5,   required = False, help="minimum RDBE of compositions. set False to turn off")  
     parser.add_argument("-min_rdbe",  default=80,   required = False, help="maximum RBDE of compositions. set False to turn off")  
     parser.add_argument("-mode",  default="pos",   required = False, help="ionization mode: positive, negative or "" (ignore). This will subtract mass based on ion adducts. if "" is used, the exact masses are used")    
-    parser.add_argument("-adducts",  default=["+H+","+Na+","+K+","-H+","+Cl-"],   
+    parser.add_argument("-adducts",  default=["+H+","+Na+","+K+","-+","+Cl-"],   
                         required = False, help="The ionization mode will determine used adducts. Syntax: 'sign element charge' eg. gain of H+,Na+,K+ for positive, and  Cl- or loss of H+ for negative ionization mode ")    
     
-    
+    parser.add_argument("-charges",  default=[1],   
+                        required = False, help="Charge states considered ")    
     
     #performance arguments
     parser.add_argument("-ppm",  default=5, required = False, help="ppm mass error tolerance of predicted compositions")  
@@ -109,7 +118,10 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     print("")
     locals().update(args)
 
-
+#charges and adducts need command line string parsing
+if type(charges)==str: charges=[int(i.strip()) for i in charges.split(",")]
+if type(adducts)==str: adducts=[int(i.strip()) for i in adducts.split(",")]
+    
 #%%
 emass = 0.000548579909  # electron mass
 
@@ -246,40 +258,53 @@ if (masses > max_mass).sum():
 print("")
 lm=len(masses)
 
-#Add adducts
+### Add adducts ###
 if mode=="":                   adducts=[]
-if "n" in mode or "-" in mode: adducts=[a for a in adducts  if "-" in a]
-if "p" in mode or "+" in mode: adducts=[a for a in adducts  if "-" not in a]
-if (not len(adducts)) & ("n" in mode or "-" in mode): adducts=["-"]
-if (not len(adducts)) & ("p" in mode or "+" in mode): adducts=["+"]
+if "n" in mode or "-" in mode: adducts=[a for a in adducts  if a.count("-")==1]
+if "p" in mode or "+" in mode: adducts=[a for a in adducts  if a.count("-")!=1]
+if (not len(adducts)) & ("n" in mode or "-" in mode): adducts=["+-"]
+if (not len(adducts)) & ("p" in mode or "+" in mode): adducts=["--"]
 
-#adduct sign
+
 adduct_sign    =[-1  if a[0]=="-" else  1  for a in adducts]
-adduct_sign_str=["-" if a[0]=="-" else "+" for a in adducts]
-adducts=pd.Series(adducts).str.lstrip("+-").tolist()
+adduct_mass=[getMz(a[1:]) for a in adducts]
 
-if (not len(adducts)) & ("n" in mode or "-" in mode): adducts=["-"]
-if (not len(adducts)) & ("p" in mode or "+" in mode): adducts=["+"]
-adduct_mass=[getMz(a) for a in adducts]
+adf=pd.DataFrame([adducts,adduct_mass]).T
+adf.columns=["adduct","adduct_mass"]
+adf["adduct_mass"]=adf["adduct_mass"]*adduct_sign
+acomps=pd.concat([parse_form(a[1:]) for a in adducts]).fillna(0)*np.array(adduct_sign).reshape(-1,1)
+[acomps.pop(i) for i in ["+","-"] if i in acomps.columns]
+acomps.index=adducts
+# adf[acomps.columns]=(acomps*np.array(adduct_sign).reshape(-1,1)).values
+
 if "n" in mode or "-" in mode:  print("mode is negative,")
 if "p" in mode or "+" in mode:  print("mode is positive,")
 
 if len(mode) & len(adducts): 
-    message="adducts used: "+", ".join([adduct_sign_str[ix]+i+" ("+str(adduct_mass[ix].round(4)*adduct_sign[ix]) +") " for ix,i in enumerate(adducts)])
-    print(message.replace("--","+"))
+    print("adducts used: "+", ".join([i+" ("+str(adduct_mass[ix].round(4)*adduct_sign[ix]) +") " for ix,i in enumerate(adducts)]))
+    
 
 if len(adducts):
     i1,i2,i3=np.arange(lm).tolist()*len(adducts), masses.tolist()*len(adducts), np.repeat(np.array(adducts),lm)
-    mass_df=pd.DataFrame([i1,i2,i3],index=["index","input_mass","adduct"]).T
-    
-    adduct_cats=np.repeat(adducts,lm)
-    adduct_masses=np.repeat(adduct_mass,lm)
-    masses=np.hstack([masses-adduct_sign[ix]*adduct_mass[ix] for ix,_ in enumerate(adducts)])
+    mass_df=pd.DataFrame([i1,i2,i3],index=["index","input_mass","adduct"]).T.merge(adf,on="adduct")
     
 else:
     mass_df=pd.DataFrame([np.arange(lm),masses],index=["index","input_mass"]).T
+    mass_df["adduct_mass"]=0
+    mass_df["adduct"]=""
     
 
+### Add charges ###
+mass_df["charge"]=[charges]*len(mass_df)
+mass_df=mass_df.explode("charge")
+mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]*mass_df["charge"]
+
+mass_df=mass_df[mass_df["mass"]<max_mass].reset_index(drop=True) #filter on max mass
+
+
+adduct_cats=mass_df["adduct"].values.flatten()
+charge_cats=mass_df["charge"].values
+masses=mass_df["mass"].values
 
 
 # %% Construct MFP space
@@ -464,6 +489,9 @@ ppmd=abs((peak_mass[a_ix].astype(np.int64)-um.astype(np.int64))/peak_mass[a_ix].
 um,a_ix=um[ppmd],a_ix[ppmd]
 
 
+#parse_comp output path
+
+
 comps = np.load(comp_output_path, mmap_mode="r")
 mass  = np.load(mass_output_path, mmap_mode="r")
 
@@ -574,16 +602,21 @@ res=pd.DataFrame(np.hstack([pm.reshape(-1,1)/mass_blowup,
 print("")
 print("MFP elapsed time: "+str(time.time()-start_time))
 
-#%% writing output
+res=pd.concat([mass_df.iloc[us[s],:].reset_index(drop=True),res[["pred_mass","ppm"]+elements.tolist()]],axis=1)
 
-res["index"]=us[s]%lm
-if len(adducts):
-    res["adduct"]=adduct_cats[us[s]].reshape(-1,1)
-    if keep_all: res=mass_df.sort_values(by="index").merge(res,how="left" ,on=["index","adduct"])
-    else:        res=mass_df.sort_values(by="index").merge(res,how="inner",on=["index","adduct"])
-elif keep_all:   res=mass_df.merge(res,how="outer",on="index").sort_values(by="index")
+#add adduct formulas
+res[list(set(acomps.columns)-set(elements))]=0
+res[acomps.columns]+=acomps.loc[res.adduct,acomps.columns].values
+
+if keep_all: #add unidentified masses
+    missing_index=list(set(mass_df["index"])-set(res.index))
+    missing_rows=mass_df[["index","input_mass"]].drop_duplicates().set_index("index").loc[missing_index,:].reset_index()
+    missing_rows[res.columns[2:]]=0
+    missing_rows["adduct"]=""
+    res=pd.concat([res,missing_rows])
     
-    
+res["appm"]=res["ppm"].abs()
+res=res.sort_values(by=["index","charge","appm"]).reset_index(drop=True)   
 
 #%%
 if not os.path.exists(MFP_output_folder): os.makedirs(MFP_output_folder)
