@@ -57,7 +57,7 @@ max_rdbe = ""
 mode = "pos"                 # ionization mode. Options: " ", "positive", "negative" # positive substracts electron mass, negative adds electron mass, "" doesn't add anything
 adducts=["--", "+H+","+Na+","+K+", # default positive adducts 
          "+-", "-H+","+Cl-"]       # default negative adducts
-
+charges=[1]                            # default: [1]
 
 
 #performance arguments
@@ -106,7 +106,8 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     parser.add_argument("-mode",  default="pos",   required = False, help="ionization mode: positive, negative or "" (ignore). This will subtract mass based on ion adducts. if "" is used, the exact masses are used")    
     parser.add_argument("-adducts",  default=["+H+","+Na+","+K+","-H+","+Cl-"],   
                         required = False, help="The ionization mode will determine used adducts. Syntax: 'sign element charge' eg. gain of H+,Na+,K+ for positive, and  Cl- or loss of H+ for negative ionization mode ")    
-    
+    parser.add_argument("-charges",  default=[1],   required = False, help="Charge states considered ")    
+         
     #performance arguments
     parser.add_argument("-ppm",  default=5, required = False, help="ppm mass error tolerance of predicted compositions")  
     parser.add_argument("-t","--top_candidates",  default=20, required = False, help="number of best candidates returned (sorted by mass error)")  
@@ -118,6 +119,11 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     print(args) 
     print("")
     locals().update(args)
+
+#charges and adducts need command line string parsing
+if type(charges)==str: charges=[int(i.strip()) for i in charges.split(",")]
+if type(adducts)==str: adducts=[int(i.strip()) for i in adducts.split(",")]
+    
 
 #%%
 
