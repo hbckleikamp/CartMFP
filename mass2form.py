@@ -67,7 +67,6 @@ MFP_output_filename="CartMFP_"+Path(input_file).stem+".tsv" # default: CartMFP_ 
 debug=False #True     #writes CART MFP file even if it already exists to test writing function
 
 #%% Arguments for execution from command line.
-
 if not hasattr(sys,'ps1'): #checks if code is executed from command line
     
     import argparse
@@ -84,15 +83,16 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     parser.add_argument("-mass_table",                 default=str(Path(basedir, "mass_table.tsv")), required = False, help="list of element masses")  
     parser.add_argument("-cart_out", "--Cart_Output",  default=str(Path(basedir, "Cart_Output")), required = False, help="Output folder for cartesian files")   
     parser.add_argument("-mfp_out",  "--MFP_Output  ", default=str(Path(basedir, "MFP_Output")), required = False, help="Output folder for molecular formula prediction")   
-    parser.add_argument("-out_file", "MFP_output_filename",  default="CartMFP_"+Path(input_file).stem+".tsv", required = False, help="filename of molecular formula prediction output")   
     
+    args = parser.parse_args()
+    parser.add_argument("-out_file", "--MFP_output_filename",  default="CartMFP_"+Path(args.input_file).stem+".tsv", required = False, help="filename of molecular formula prediction output")   
     
     #composition constraints
     parser.add_argument("-c", "--composition", default="H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]", 
     required = False, help="ALlowed elements and their minimum and maximum count. The following syntax is used: Element_name[minimum_count,maximum_count]")  
     parser.add_argument("-max_mass",  default=1000, required = False, help="maximum mass of compositions")  
     parser.add_argument("-min_rdbe",  default=-5,   required = False, help="minimum RDBE of compositions. set False to turn off")  
-    parser.add_argument("-min_rdbe",  default=80,   required = False, help="maximum RBDE of compositions. set False to turn off")  
+    parser.add_argument("-max_rdbe",  default=80,   required = False, help="maximum RBDE of compositions. set False to turn off")  
     parser.add_argument("-mode",  default="pos",   required = False, help="ionization mode: positive, negative or "" (ignore). This will subtract mass based on ion adducts. if "" is used, the exact masses are used")    
     parser.add_argument("-adducts",  default=["+H+","+Na+","+K+","-+","+Cl-"],   
                         required = False, help="The ionization mode will determine used adducts. Syntax: 'sign element charge' eg. gain of H+,Na+,K+ for positive, and  Cl- or loss of H+ for negative ionization mode ")    
@@ -117,6 +117,8 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     print(args) 
     print("")
     locals().update(args)
+    
+
 
 #charges and adducts need command line string parsing
 if type(charges)==str: charges=[int(i.strip()) for i in charges.split(",")]
