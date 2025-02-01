@@ -57,7 +57,7 @@ maxmem = 0.7            # fraction of max free memory usage
 mass_blowup = 40000     # converting mass to int (higher blowup -> better precision, but higher memory usage)
 keep_all    = False     # also display mass/ adduct combinations for which no molecular formula was found
 
-#filpaths
+#filepaths
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
 Cartesian_output_folder = str(Path(basedir, "Cart_Output")) # default: CartMFP folder / Cart_Output
 MFP_output_folder = str(Path(basedir, "MFP_Output"))        # default: CartMFP folder / MFP_Output
