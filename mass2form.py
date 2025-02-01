@@ -61,7 +61,7 @@ keep_all    = False     # also display mass/ adduct combinations for which no mo
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
 Cartesian_output_folder = str(Path(basedir, "Cart_Output")) # default: CartMFP folder / Cart_Output
 MFP_output_folder = str(Path(basedir, "MFP_Output"))        # default: CartMFP folder / MFP_Output
-MFP_output_filename="CartMFP_"+Path(input_file).stem+".tsv" # default: CartMFP_ + input_filename + .tsv 
+MFP_output_filename=""                                      # default: CartMFP_ + input_filename + .tsv 
 
 
 debug=False #True     #writes CART MFP file even if it already exists to test writing function
@@ -82,9 +82,9 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     
     #output and utility filepaths
     parser.add_argument("-mass_table",                 default=str(Path(basedir, "mass_table.tsv")), required = False, help="list of element masses")  
-    parser.add_argument("-cart_out", "--Cart_Output",  default=str(Path(basedir, "Cart_Output")), required = False, help="Output folder for cartesian files")   
-    parser.add_argument("-mfp_out",  "--MFP_Output  ", default=str(Path(basedir, "MFP_Output")), required = False, help="Output folder for molecular formula prediction")   
-    parser.add_argument("-out_file", "--MFP_output_filename",  default="CartMFP_"+Path(input_file).stem+".tsv", required = False, help="filename of molecular formula prediction output")   
+    parser.add_argument("-cart_out", "--Cartesian_output_folder",  default=str(Path(basedir, "Cart_Output")), required = False, help="Output folder for cartesian files")   
+    parser.add_argument("-mfp_out",  "--MFP_output_folder", default=str(Path(basedir, "MFP_Output")), required = False, help="Output folder for molecular formula prediction")   
+    parser.add_argument("-out_file", "--MFP_output_filename",  default="", required = False, help="filename of molecular formula prediction output")   
      
     #composition constraints
     parser.add_argument("-c", "--composition", default="H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]", 
@@ -263,7 +263,7 @@ if check: masses=np.unique(masses["mz"].astype(float).values)
 else:
     check,masses = read_table(input_file,Keyword="mass")
     if check: masses=np.unique(masses["mass"].astype(float).values)
-    else: masses=np.unique(read_csv(input_file).iloc[:,-1])
+    else: masses=np.unique(pd.read_csv(input_file).iloc[:,-1])
 
 if (masses > max_mass).sum():
     print("masses above maximum mass detected!, filtering masses")
@@ -633,5 +633,7 @@ res=res.sort_values(by=["index","charge","appm"]).reset_index(drop=True)
 
 #%%
 if not os.path.exists(MFP_output_folder): os.makedirs(MFP_output_folder)
-MFP_outpath=Path(MFP_output_folder,MFP_output_filename)
+if not len(MFP_output_filename): MFP_output_filename="CartMFP_"+Path(input_file).stem+".tsv"
+MFP_outpath=str(Path(MFP_output_folder,MFP_output_filename))
+print("Writing output: "+MFP_outpath)
 res.to_csv(MFP_outpath)
