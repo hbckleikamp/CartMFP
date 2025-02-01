@@ -75,8 +75,9 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     #output and utility filepaths
     parser.add_argument("-mass_table",                 default=str(Path(basedir, "mass_table.tsv")), required = False, help="list of element masses")  
     parser.add_argument("-mfp_out",  "--MFP_Output  ", default=str(Path(basedir, "MFP_Output")), required = False, help="Output folder for molecular formula prediction")   
-    parser.add_argument("-out_file", "MFP_output_filename",  default="CartMFP_"+Path(input_file).stem+".tsv", required = False, help="filename of molecular formula prediction output")   
-    
+    args = parser.parse_args()
+    parser.add_argument("-out_file", "--MFP_output_filename",  default="CartMFP_"+Path(args.input_file).stem+".tsv", required = False, help="filename of molecular formula prediction output")   
+         
     #composition constraints
     parser.add_argument("-c", "--composition", default="", 
     required = False, help="ALlowed elements and their minimum and maximum count. The following syntax is used: Element_name[minimum_count,maximum_count]")  
