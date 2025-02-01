@@ -82,7 +82,7 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     required = False, help="ALlowed elements and their minimum and maximum count. The following syntax is used: Element_name[minimum_count,maximum_count]")  
     parser.add_argument("-max_mass",  default=0, required = False, help="maximum mass of compositions")  
     parser.add_argument("-min_rdbe",  default=False,   required = False, help="minimum RDBE of compositions. set False to turn off")  
-    parser.add_argument("-min_rdbe",  default=False,   required = False, help="maximum RBDE of compositions. set False to turn off")  
+    parser.add_argument("-max_rdbe",  default=False,   required = False, help="maximum RBDE of compositions. set False to turn off")  
     parser.add_argument("-mode",  default="pos",   required = False, help="ionization mode: positive, negative or "" (ignore). This will subtract mass based on ion adducts. if "" is used, the exact masses are used")    
     parser.add_argument("-adducts",  default=["+H+","+Na+","+K+","-+","+Cl-"] ,   
                         required = False, help="The ionization mode will determine used adducts. Syntax: 'sign element charge' eg. gain of H+,Na+,K+ for positive, and  Cl- or loss of H+ for negative ionization mode ")    
