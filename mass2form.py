@@ -57,7 +57,7 @@ maxmem = 0.7            # fraction of max free memory usage
 mass_blowup = 40000     # converting mass to int (higher blowup -> better precision, but higher memory usage)
 keep_all    = False     # also display mass/ adduct combinations for which no molecular formula was found
 
-#filepaths
+#filpaths
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
 Cartesian_output_folder = str(Path(basedir, "Cart_Output")) # default: CartMFP folder / Cart_Output
 MFP_output_folder = str(Path(basedir, "MFP_Output"))        # default: CartMFP folder / MFP_Output
@@ -67,6 +67,7 @@ MFP_output_filename="CartMFP_"+Path(input_file).stem+".tsv" # default: CartMFP_ 
 debug=False #True     #writes CART MFP file even if it already exists to test writing function
 
 #%% Arguments for execution from command line.
+
 if not hasattr(sys,'ps1'): #checks if code is executed from command line
     
     import argparse
@@ -117,8 +118,6 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     print(args) 
     print("")
     locals().update(args)
-    
-
 
 #charges and adducts need command line string parsing
 if type(charges)==str: charges=[int(i.strip()) for i in charges.split(",")]
@@ -147,10 +146,13 @@ def cartesian(arrays, comp_bitlim=np.uint8, out=None):
 
 
 # read input table (dynamic delimiter detection)
+
 def read_table(tabfile, *,
-               Keyword="mass",
+               Keyword=[], #rewrite multiple keywords
                ):
 
+    if type(Keyword)==str: Keyword=[i.strip() for i in Keyword.split(",")]
+    
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
 
@@ -161,21 +163,24 @@ def read_table(tabfile, *,
                 tab = pd.DataFrame(f.read().splitlines())
 
         # dynamic delimiter detection: if file delimiter is different, split using different delimiters until the desired column name is found
-        if Keyword:
-            if Keyword not in tab.columns:
+        if len(Keyword):
+            if not tab.columns.isin(Keyword).any():
                 delims = [i[0] for i in Counter(
                     [i for i in str(tab.iloc[0]) if not i.isalnum()]).most_common()]
                 for delim in delims:
                     if delim == " ":
                         delim = "\s"
                     try:
-                        tab = pd.read_csv(tabfile, sep=delim, header=None)
-                        if Keyword in tab.columns:
-                            break
+                        tab = pd.read_csv(tabfile, sep=delim)
+                        if tab.columns.isin(Keyword).any():
+                            return True,tab
                     except:
                         pass
 
-    return tab
+            return False,tab
+
+    return True,tab
+
 
 #parse form
 def parse_form(form): #chemical formular parser
@@ -252,7 +257,15 @@ mdf.loc["-"]=emass
 
 print("Reading table: "+str(input_file))
 print("")
-masses = np.unique(read_table(input_file).astype(float).values)
+
+
+#read masses
+check,masses = read_table(input_file,Keyword="mz")
+if check: masses=np.unique(masses["mz"].astype(float).values)
+else:
+    check,masses = read_table(input_file,Keyword="mass")
+    if check: masses=np.unique(masses["mass"].astype(float).values)
+    else: masses=np.unique(read_csv(input_file).iloc[:,-1])
 
 if (masses > max_mass).sum():
     print("masses above maximum mass detected!, filtering masses")
