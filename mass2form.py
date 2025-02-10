@@ -544,11 +544,11 @@ if need_batches:
             us.append(np.repeat(a_ix[(q1 & q2)],x[:,2].astype(int))) 
 
             #test
-            orig=peak_mass[np.repeat(a_ix[(q1 & q2)],x[:,2].astype(int))].astype(np.int64)
-            pred=mass[q]+am[ib].astype(np.int64)
-            ppmd=abs((orig-pred)/pred*1e6)
-            if (abs((orig-pred)/pred*1e6)>ppm).sum():
-                ""+1
+            #orig=peak_mass[np.repeat(a_ix[(q1 & q2)],x[:,2].astype(int))].astype(np.int64)
+            #pred=mass[q]+am[ib].astype(np.int64)
+            #ppmd=abs((orig-pred)/pred*1e6)
+            #if (abs((orig-pred)/pred*1e6)>ppm).sum():
+            #    print("Warning higher ppm found: "+str(ppmd.max()))
             
             
 
