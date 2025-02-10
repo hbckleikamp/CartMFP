@@ -259,11 +259,15 @@ print("")
 
 #read masses
 check,masses = read_table(input_file,Keyword="mz")
-if check: masses=np.unique(masses["mz"].astype(float).values)
+mass_ix=np.arange(len(masses))
+if check: masses,umass_ix=np.unique(masses["mz"].astype(float).values,return_inverse=True) 
 else:
     check,masses = read_table(input_file,Keyword="mass")
-    if check: masses=np.unique(masses["mass"].astype(float).values)
-    else: masses=np.unique(pd.read_csv(input_file).iloc[:,-1])
+    if check: masses,umass_ix=np.unique(masses["mass"].astype(float).values,return_inverse=True)
+    else: masses,umass_ix=np.unique(pd.read_csv(input_file).iloc[:,-1],return_inverse=True)
+    
+map_umass=pd.DataFrame(np.vstack([mass_ix,umass_ix]).T,columns=["original_index","index"])
+    
 
 if (masses > max_mass).sum():
     print("masses above maximum mass detected!, filtering masses")
@@ -459,10 +463,10 @@ if not os.path.exists(m2g_output_path) or not os.path.exists(mass_output_path) o
     emp = np.zeros([bmax+1,2], dtype=m2g_bitlim) 
     emp[six] = np.vstack([lbrb[:-1],lbrb[1:]]).T
     emp=np.hstack([emp,(emp[:,1]-emp[:,0]).reshape(-1,1)])
-
-    if not os.path.exists(m2g_output_path):
-        np.save(m2g_output_path, emp)
-        
+    
+    if os.path.exists(m2g_output_path): os.remove(m2g_output_path)
+    np.save(m2g_output_path, emp)
+    
     del six, sp, s, mass  # or write as function?
 
 else:
@@ -517,7 +521,7 @@ start_time = time.time()
 
 if need_batches:
 
-    print("MFP batches:")
+    print("MFP batches: "+str(len(bm)))
 
     am = (bm*edf[mem_cols:].mass.values).sum(axis=1)  # added mass
     us, ms, cs = [], [], []
@@ -551,7 +555,6 @@ if need_batches:
             #ppmd=abs((orig-pred)/pred*1e6)
             #if (abs((orig-pred)/pred*1e6)>ppm).sum():
             #    print("Warning higher ppm found: "+str(ppmd.max()))
-            
             
 
     if len(ms):
@@ -632,7 +635,7 @@ if keep_all: #add unidentified masses
     
 res["appm"]=res["ppm"].abs()
 res=res.sort_values(by=["index","charge","appm"]).reset_index(drop=True)   
-
+res=map_umass.merge(res) #map back non-unique mass index
 #%%
 if not os.path.exists(MFP_output_folder): os.makedirs(MFP_output_folder)
 if not len(MFP_output_filename): MFP_output_filename="CartMFP_"+Path(input_file).stem+".tsv"
