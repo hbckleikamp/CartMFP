@@ -536,7 +536,9 @@ if need_batches:
             c1= comps[q]
                  
             miss_col=len(edf)-c1.shape[1]
-            if miss_col: c1=np.hstack([c1,np.zeros([len(c1),miss_col],dtype=comp_bitlim)])
+            if miss_col:
+                print("Warning! Cartesian table has different shape!")
+                c1=np.hstack([c1,np.zeros([len(c1),miss_col],dtype=comp_bitlim)])
          
             c1[:, mem_cols:] = b
             cs.append(c1)
