@@ -21,7 +21,7 @@ import os
 import pandas as pd
 import numpy as np
 from collections import Counter
-
+from npy_append_array import NpyAppendArray
 
 # %% change directory to script directory (should work on windows and mac)
 
@@ -341,7 +341,7 @@ print("")
 
 #%% Write unsorted array
 
-from npy_append_array import NpyAppendArray
+
 
 um,uc=np.unique(mass,return_counts=True) #can be done with diff count
 zs=np.zeros(bmax+1,dtype=bits(uc.max()*len(bm)))
