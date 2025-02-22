@@ -37,6 +37,16 @@ max_mass = 1000         # default 1000
 min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
 max_rdbe = 80
 
+# composition="H[0,300]C[0,112]N[0,75]O[0,75]P[0,15]S[0,15]"   # default: H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]
+# max_mass = 1500         # default 1000
+# min_rdbe = -5          # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
+# max_rdbe = 105
+
+# composition="H[0,400]C[0,150]N[0,100]O[0,100]P[0,20]S[0,20]"   # default: H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]
+# max_mass = 2000         # default 1000
+# min_rdbe = -5          # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
+# max_rdbe = 130
+
 
 #performance arguments
 maxmem = 0.7            # fraction of max free memory usage 
@@ -49,7 +59,7 @@ Cartesian_output_folder = str(Path(basedir, "Cart_Output")) # default: CartMFP f
 
 
 remove=True #removes unsorted composition file and sorted index file after building sorted array
-
+debug=False #True
 #%% Arguments for execution from command line.
 
 if not hasattr(sys,'ps1'): #checks if code is executed from command line
@@ -77,7 +87,8 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     parser.add_argument("-mass_blowup",  default=40000, required = False, help="multiplication factor to make masses integer. Larger values increase RAM usage but reduce round-off errors")  
     
     
-    parser.add_argument("-remove",  default=True, required = False, help="removes unsorted composition file and sorted index file after building sorted array")   
+    parser.add_argument("-remove",  default=True, required = False, help="removes unsorted composition file and sorted index file after building sorted array")  
+    parser.add_argument("-d","--debug",  default=False, required = False, help="")  
     
 
     args = parser.parse_args()
@@ -270,9 +281,6 @@ else:
 unsorted_comp_output_path = str(
     Path(Cartesian_output_folder, Cartesian_output_file))+"_unsorted_comp.npy"
 
-unsorted_mass_output_path = str(
-    Path(Cartesian_output_folder, Cartesian_output_file))+"_unsorted_mass.npy"
-
 comp_output_path = str(
     Path(Cartesian_output_folder, Cartesian_output_file))+"_comp.npy"
 
@@ -338,6 +346,7 @@ if need_batches:
     print("computing remaining cartesian:")
     bm = cartesian(arrays)
     am = (bm*edf[mem_cols:].mass.values).sum(axis=1)  #filter bm based on max mass
+    q=am<=bmax
     
 print("")
 
@@ -345,25 +354,21 @@ print("")
 
 from npy_append_array import NpyAppendArray
 
-um,uc=np.unique(mass,return_counts=True) #can be done with diff count
-zs=np.zeros(bmax+1,dtype=bits(uc.max()*len(bm)))
+group_ixs=np.argwhere(np.diff(mass)>0)[:,0]
+uc=np.diff(np.hstack([0,group_ixs+1,len(mass)]))    
+count_bit=bits(uc.max()*len(bm))
+zs=np.zeros(bmax+1,dtype=count_bit)
 
-
-
-#%%
-
-
-
-dzs=np.zeros(bmax+1,dtype=np.uint32)
-
-with NpyAppendArray(unsorted_comp_output_path, delete_if_exists=True) as fc, NpyAppendArray(unsorted_mass_output_path, delete_if_exists=True) as fm:
+batch_lens=[]
+with NpyAppendArray(unsorted_comp_output_path, delete_if_exists=True) as fc:
 
     for ib, b in enumerate(bm):
         print("writing unsorted batch: "+str(ib)+" ( "+str(np.round((ib+1)/batches*100,2))+" %)")
-    
+ 
+        #update based on batch
         zm[:,mem_cols:]=b
         m=mass+am[ib]
-    
+
         #max mass filtering
         q=np.ones(len(zm),dtype=bool)
         if max_mass: q=q & (m<=bmax)
@@ -374,47 +379,71 @@ with NpyAppendArray(unsorted_comp_output_path, delete_if_exists=True) as fc, Npy
         if len(Xrdbe): rdbe += zm[:, Xrdbe].sum(axis=1)*2
         if len(Yrdbe): rdbe -= zm[:, Yrdbe].sum(axis=1)
         if len(Zrdbe): rdbe += zm[:, Zrdbe].sum(axis=1) 
-
+    
         if flag_rdbe_min & flag_rdbe_max: q = q & (rdbe >= min_rdbe*2) & (rdbe <= max_rdbe*2)
         elif flag_rdbe_min:               q = q & (rdbe >= min_rdbe*2)
         elif flag_rdbe_max:               q = q & (rdbe <= max_rdbe*2)
-
-        m=np.sum(zm[q]*edf.mass.values,axis=1).astype(bits(bmax))
-
-        fc.append(zm[q])                                      #append to unsorted mass array 
-        fm.append(m)                                         #append to unsorted mass array 
     
-        um,uc=np.unique(m,return_counts=True)
-        dzs[um]+=uc.astype(np.uint32)
+        #compute total counts array.
+        m=m[q] 
+        zs[:int(m[-1]+1)]+=np.bincount(m.astype(np.int64)).astype(count_bit)
 
-print("")
+        #add batch lengths
+        batch_lens.append(len(m))
+    
+        #write to unsorted index file
+        fc.append(zm[q])  
+
+
+print("Completed")
+print(" ")
+
 
 #%%
+sorted_comps = np.memmap(comp_output_path, dtype=bitlim, mode='w+', shape=(zs.sum(),len(elements)))
 
-masses  = np.load(unsorted_mass_output_path, mmap_mode="r")
-comps   = np.load(unsorted_comp_output_path,mmap_mode="r")
+comps=np.load(unsorted_comp_output_path,mmap_mode="r")
 
-#save sorted composition
-s=np.argsort(masses)
-np.save(comp_output_path,comps[s])
-
+dt=bits(len(comps))
+czs=np.cumsum(zs,dtype=dt) 
+sort_batches=np.hstack([0,np.cumsum(batch_lens),len(comps)]).astype(dt)
 
 
-#save index
-cdzs=np.cumsum(dzs)
-emp=np.vstack([cdzs-dzs,cdzs,dzs]).T
+
+for i in range(len(sort_batches)-1):
+    print("writing sorted index: "+str(i)+" ( "+str(np.round((sort_batches[i+1])/len(comps)*100,2))+" %)")
+    
+    bcomps=comps[sort_batches[i]:sort_batches[i+1]]
+    
+    if len(bcomps):
+    
+        #create sorting index
+        m=np.sum(bcomps*edf.mass.values,axis=1)
+        czs[:int(m[-1]+1)]-=np.bincount(m.astype(np.int64)).astype(dt)
+         
+        df=pd.DataFrame(np.diff(m)==0,columns=['bool'])
+        cs= df['bool'].cumsum()
+        c_arr=np.hstack([0,cs.sub(cs.where(~df['bool']).ffill().fillna(0)).values]).astype(dt)
+        
+        sorted_comps[czs[m]+c_arr]=bcomps
+        
+        #need to flush and reload each loop to prevent memory overload? (reduces speed a lot)
+        sorted_comps.flush() 
+        sorted_comps = np.memmap(comp_output_path, dtype=bitlim, mode='r+', shape=(zs.sum(),len(elements)))
+    
+sorted_comps.flush()
+print("")
+
+#%% Construct mass index
+
+cdzs=np.cumsum(zs)
+emp=np.vstack([cdzs-zs,cdzs,zs]).T
 np.save(m2g_output_path,emp)
 
-
 #%% Cleanup
-
-
+del comps,bcomps
 if remove:
+    
     os.remove(unsorted_comp_output_path)
-    os.remove(unsorted_mass_output_path)
-
-
-
-
 
 
