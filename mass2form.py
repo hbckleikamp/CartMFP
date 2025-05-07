@@ -643,7 +643,8 @@ if need_batches:
             elif flag_rdbe_max:               qr = (brdbe <= (max_rdbe*2))
             q,ea_ix=q[qr],ea_ix[qr]
 
-        
+        if not len(q): continue
+                 
         ms=mass[q]+am[ib]
         d=abs(ms-pmi[ea_ix]).astype(np.int16)
         group_ixs=np.hstack([0,np.argwhere(ea_ix[1:]>ea_ix[:-1])[:,0]+1]) 
