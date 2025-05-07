@@ -693,6 +693,15 @@ else:  # no Cartesian batches
 print("")
 print("MFP elapsed time: "+str(mfp_time))
 
+#pick best per mass
+s=np.lexsort((ds,us)) #maybe a faster solution than lexsort exists?
+ds=ds[s]
+group_ixs=np.argwhere(us[s[1:]]!=us[s[:-1]])[:,0]+1
+max_mass=ds[np.hstack([0,group_ixs])+top_candidates]+1 #+1 for roundoff error
+q=s[np.argwhere((ds-np.repeat(max_mass,np.diff(np.hstack([0,group_ixs,len(ds)]))))<0)[:,0]]
+cs,us=cs[q],us[q]
+
+
 res=pd.DataFrame(mass_df.iloc[us,:])
 res["pred_mass"]=np.sum(cs*mdf.loc[edf.index].values.flatten(),axis=1)
 res["ppm"]=(res["pred_mass"]-res["mass"])/res["mass"]*1e6
