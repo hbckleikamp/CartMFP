@@ -60,10 +60,6 @@ min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depe
 max_rdbe = 80           
 
 
-#test
-input_file=r"c:\cartmfp\Test_masses\r0_m1000_s10000.npy"
-
-
 mode = "pos"                    # ionization mode. Options: "", "positive", "negative" # positive substracts electron mass, negative adds electron mass, "" doesn't add anything
 adducts =["--","+Na+","+K",     # default positive adducts "+H+","+Na+","+K"
          "+-","Cl-"]            # default negative adducts              "+-", "Cl-" 
@@ -84,6 +80,10 @@ MFP_output_filename=""                                      # default: CartMFP_ 
 
 
 debug=False #True     #writes CART MFP file even if it already exists to test writing function
+
+
+
+
 
 
 #%% Arguments for execution from command line.
@@ -322,8 +322,6 @@ mdf.loc["-"]=emass
 print("Reading table: "+str(input_file))
 print("")
 
-tracemalloc.start() 
-read_time=time.time()
 
 #read masses
 check,masses = read_table(input_file,Keyword="mz")
@@ -402,16 +400,12 @@ um=(np.repeat(peak_mass_low,d)+(np.arange(d.sum()) - np.repeat(np.cumsum(d)-d, d
 #index to link back to original mass
 a_ix=np.repeat(np.arange(len(masses)),d)
 
-read_time=time.time()-read_time
-read_mem=tracemalloc.get_traced_memory()[1]
-tracemalloc.reset_peak()
+
 
 # %% Construct MFP space
 
 
-tracemalloc.start() 
 cartesian_time = time.time()
-
 
 # % Construct elemental space dataframe
 edf=pd.DataFrame([i.replace(",","[").split("[") if "," in i else [i.split("[")[0],0,i.split("[")[-1]] for i in composition.split("]")[:-1]] ,columns=["symbol","low","high"]).set_index("symbol")
@@ -616,15 +610,25 @@ cartesian_time=time.time()-cartesian_time
 
 print("Cartesian elapsed time: "+str(cartesian_time))
 print("")
-mfp_time=time.time()
+
+# Cartesian batched formula prediction
+mfp_time = time.time()
 
 
+
+#%%
+total_filtering_time=0
+max_filtering_mem=[]
+total_pick_best_time=0
+max_pick_best_mem=[]
+
+ibits=bits(len(masses))
 if need_batches:
 
     print("MFP batches: "+str(len(bm)))
 
 
-    us, cs = [], []
+    us, cs, ds = [], [], []
     for ib, b in enumerate(bm):
         print(ib)
         cm = um-am[ib]     # corrected input mass
@@ -635,21 +639,29 @@ if need_batches:
         #get mass indices 
         mr=np.arange(x[:,2].sum()) - np.repeat(np.cumsum(x[:,2])-x[:,2], x[:,2]) #make extended range from emp cumsum
         q=np.repeat(x[:,0],x[:,2])+mr #composition index
-        ea_ix=np.repeat(qa_ix,x[:,2].astype(int))
+        ea_ix=np.repeat(qa_ix,x[:,2].astype(ibits))
+
+
+        ### Chemical filtering
+        
         if flag_rdbe_max or flag_rdbe_min:
             brdbe=rdbe[q]+batch_rdbe[ib]
             if flag_rdbe_min & flag_rdbe_max: qr = (brdbe >= (min_rdbe*2)) & (brdbe <= (max_rdbe*2))
             elif flag_rdbe_min:               qr = (brdbe >= (min_rdbe*2))
             elif flag_rdbe_max:               qr = (brdbe <= (max_rdbe*2))
             q,ea_ix=q[qr],ea_ix[qr]
+            
 
         if not len(q): continue
-                 
+
+        ### Pre-trim best candidates
+
+        
+        #pick best per batch
         ms=mass[q]+am[ib]
         d=abs(ms-pmi[ea_ix]).astype(np.int16)
         group_ixs=np.hstack([0,np.argwhere(ea_ix[1:]>ea_ix[:-1])[:,0]+1]) 
         lows=numpy_argmin_reduceat(d,group_ixs) 
-        
         ls=np.clip(lows-top_candidates,group_ixs,None)
         rs=np.clip(lows+top_candidates,ls+1,np.hstack([group_ixs[1:],len(d)]))
         xtrim=create_ranges(np.vstack([ls,rs]).T)
@@ -661,14 +673,16 @@ if need_batches:
             print("Warning! Cartesian table has different shape!")
             c1=np.hstack([c1,np.zeros([len(c1),miss_col],dtype=comp_bitlim)])
         c1[:, mem_cols:] = b
+        
+        
         cs.append(c1)
-        
         us.append(ea_ix[xtrim]) 
-        
+        ds.append(d[xtrim])
+    
 
 
     if len(cs):
-        cs, us =  np.vstack(cs), np.hstack(us)
+        cs, us, ds =  np.vstack(cs), np.hstack(us), np.hstack(ds)
 
 
 else:  # no Cartesian batches
@@ -684,14 +698,14 @@ else:  # no Cartesian batches
 
 
 
+mfp_time=time.time()-mfp_time-total_filtering_time-total_pick_best_time
+
+
+
 #%% Pick best candidates
 
 
-
-
-
-print("")
-print("MFP elapsed time: "+str(mfp_time))
+print("Picking best "+str(top_candidates)+" candidates.")
 
 #pick best per mass
 s=np.lexsort((ds,us)) #maybe a faster solution than lexsort exists?
@@ -701,6 +715,10 @@ max_mass=ds[np.hstack([0,group_ixs])+top_candidates]+1 #+1 for roundoff error
 q=s[np.argwhere((ds-np.repeat(max_mass,np.diff(np.hstack([0,group_ixs,len(ds)]))))<0)[:,0]]
 cs,us=cs[q],us[q]
 
+
+#pick best per input mass within ppm
+print("")
+print("MFP elapsed time: "+str(mfp_time))
 
 res=pd.DataFrame(mass_df.iloc[us,:])
 res["pred_mass"]=np.sum(cs*mdf.loc[edf.index].values.flatten(),axis=1)
@@ -712,12 +730,12 @@ res["rdbe"]=(cs[:, Xrdbe].sum(axis=1).astype(rdbe_bitlim)*2
 
 res[elements]=cs
 res=res[res["appm"]<=ppm]
-
-
 res=res.sort_values(by=["index","charge","appm"]).reset_index(drop=True)   
-
 res=map_umass.merge(res,on="index",how="inner") #map back non-unique mass index
 res=res.groupby("original_index",sort=False).head(top_candidates) #final pick best
+
+#%% combine with original index
+
 
 
 if len(adducts): 
@@ -726,6 +744,7 @@ if len(adducts):
 q=res.columns.isin(mdf.index)
 hill=res.columns[q].sort_values().tolist()
 res=res[res.columns[~q].tolist()+hill]
+
 
 #generate element string without adducts
 ecounts=res[hill]
@@ -745,13 +764,6 @@ if len(adducts):
     res["formula+adduct"]=np.array([e_arr[:,ix]+eles[:,ix] for ix in range(len(hill))]).sum(axis=0)
 
 
-#%% combine with original index
-
-
-#add adduct formulas
-if len(adducts): 
-    res[list(set(acomps.columns)-set(elements))]=0
-    res[acomps.columns]+=acomps.loc[res.adduct,acomps.columns].values
 
 if keep_all: 
     missing_index=np.argwhere(~np.in1d(np.arange(lm),np.unique(us))).tolist()
@@ -767,14 +779,13 @@ if keep_all:
     
 #%% Write
 
-
-
 if not os.path.exists(MFP_output_folder): os.makedirs(MFP_output_folder)
 if not len(MFP_output_filename): MFP_output_filename="CartMFP_"+Path(input_file).stem+".tsv"
 MFP_outpath=str(Path(MFP_output_folder,MFP_output_filename))
 
+
 #faster writing than pandas
-new_pa_dataframe = pyarrow.Table.from_pandas(res, preserve_index=False)
+new_pa_dataframe = pyarrow.Table.from_pandas(res)
 write_options = pc.WriteOptions(delimiter="\t",batch_size=10000)
 pc.write_csv(new_pa_dataframe, MFP_outpath,write_options)
 

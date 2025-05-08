@@ -33,6 +33,7 @@ composition_file= str(Path(basedir,                         #Required: cartesian
 # input_file='c:\\cartmfp\\Test_masses\\r0_m1000_s10.npy'
 
 
+
 mass_index_file = ""
 
 #composition arguments (in default mode, these are all derived from the cartesian filename)
@@ -67,6 +68,12 @@ composition_file="C:/CartMFP/Timing_scripts/CartMFP/Cart_Output/H[320]C[120]N[80
 input_file="C:/CartMFP/CASMI_comparison/CASMI_ms.npy"
 mode="pos"
 adducts="+H+"
+
+#test
+input_file=r"c:\\cartmfp\\Test_masses\\r0_m1000_s10.npy" 
+composition_file=r"c:\\cartmfp\\timing_scripts\\cartmfp\\Cart_Output\\H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]_b40000max1000rdbe-5_80.0_comp.npy"
+mode=""
+
 
 #%% Arguments for execution from command line.
 
@@ -573,7 +580,8 @@ q=res.columns.isin(mdf.index)
 hill=res.columns[q].sort_values().tolist()
 res=res[res.columns[~q].tolist()+hill]
 
-#generate element string without adducts
+
+#add to timing scripts
 ecounts=res[hill]
 e_arr=np.array([hill]*len(res))
 e_arr=np.where(ecounts==0,"",e_arr)
