@@ -734,7 +734,7 @@ res=res[res.columns[~q].tolist()+hill]
 
 
 #construct element string
-ecounts=res[hill]
+ecounts=res[hill].astype(int)
 e_arr=np.tile(hill,len(res)).reshape(len(res),-1) #np.array([hill]*len(res)) #slow
 e_arr=np.where(ecounts==0,"",e_arr)
 eles=ecounts.applymap(str).replace("0","").replace("1","")
@@ -743,7 +743,7 @@ res["formula"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arang
 #generate element string with adducts
 if len(adducts): 
     res[acomps.columns]+=acomps.loc[res.adduct,acomps.columns].values
-    ecounts=res[hill]
+    ecounts=res[hill].astype(int)
     e_arr=np.tile(hill,len(res)).reshape(len(res),-1) #np.array([hill]*len(res)) #slow
     e_arr=np.where(ecounts==0,"",e_arr)
     eles=ecounts.applymap(str).replace("0","").replace("1","")
