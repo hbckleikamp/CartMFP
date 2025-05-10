@@ -133,8 +133,9 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     locals().update(args)
 
 #charges and adducts need command line string parsing
-if type(charges)==str: charges=[int(i.strip()) for i in charges.split(",")]
-if type(adducts)==str: adducts=[i.strip() for i in adducts.split(",")]
+if type(charges)==str: charges=[int(i.strip().strip("[").strip("]")) for i in charges.split(",")]
+if type(adducts)==str: adducts=[i.strip().strip("[").strip("]") for i in adducts.split(",")]
+
 
 #%%
 emass = 0.000548579909  # electron mass
