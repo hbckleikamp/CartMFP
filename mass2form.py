@@ -74,7 +74,8 @@ keep_all    = True       # also display mass/ adduct combinations for which no m
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
 Cartesian_output_folder = str(Path(basedir, "Cart_Output")) # default: CartMFP folder / Cart_Output
 MFP_output_folder = str(Path(basedir, "MFP_Output"))        # default: CartMFP folder / MFP_Output
-MFP_output_filename=""                                      # default: CartMFP_ + input_filename + .tsv 
+MFP_output_filename=Path(input_file).stem+"mfp.tsv"         # default: input_filename + _mfp.tsv 
+
 
 
 debug=False #True     #writes CART MFP file even if it already exists to test writing function
