@@ -614,7 +614,7 @@ if keep_all:
 
 
 if not os.path.exists(MFP_output_folder): os.makedirs(MFP_output_folder)
-if not len(MFP_output_filename): MFP_output_filename="CartMFP_"+Path(input_file).stem+".tsv"
+if not len(MFP_output_filename): MFP_output_filename=Path(input_file).stem+"_mfp.tsv"
 MFP_outpath=str(Path(MFP_output_folder,MFP_output_filename))
 
 #faster writing than pandas
