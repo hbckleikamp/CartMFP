@@ -40,7 +40,6 @@ import numpy as np
 from collections import Counter
 import pyarrow
 import pyarrow.csv as pc
-# import matplotlib.pyplot as plt #testing
 
 # %% change directory to script directory (should work on windows and mac)
 
@@ -58,7 +57,6 @@ composition="H[200]C[75]N[50]O[50]P[10]S[10]"   # default: H[0,200]C[0,75]N[0,50
 max_mass = 1000         # default 1000
 min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
 max_rdbe = 80           
-
 
 mode = "pos"                    # ionization mode. Options: "", "positive", "negative" # positive substracts electron mass, negative adds electron mass, "" doesn't add anything
 adducts =["--","+Na+","+K",     # default positive adducts "+H+","+Na+","+K"
@@ -80,10 +78,6 @@ MFP_output_filename=""                                      # default: CartMFP_ 
 
 
 debug=False #True     #writes CART MFP file even if it already exists to test writing function
-
-
-
-
 
 
 #%% Arguments for execution from command line.
@@ -400,12 +394,10 @@ um=(np.repeat(peak_mass_low,d)+(np.arange(d.sum()) - np.repeat(np.cumsum(d)-d, d
 #index to link back to original mass
 a_ix=np.repeat(np.arange(len(masses)),d)
 
-
-
 # %% Construct MFP space
 
-
 cartesian_time = time.time()
+
 
 # % Construct elemental space dataframe
 edf=pd.DataFrame([i.replace(",","[").split("[") if "," in i else [i.split("[")[0],0,i.split("[")[-1]] for i in composition.split("]")[:-1]] ,columns=["symbol","low","high"]).set_index("symbol")
@@ -615,7 +607,6 @@ print("")
 mfp_time = time.time()
 
 
-
 #%%
 total_filtering_time=0
 max_filtering_mem=[]
@@ -643,7 +634,6 @@ if need_batches:
 
 
         ### Chemical filtering
-        
         if flag_rdbe_max or flag_rdbe_min:
             brdbe=rdbe[q]+batch_rdbe[ib]
             if flag_rdbe_min & flag_rdbe_max: qr = (brdbe >= (min_rdbe*2)) & (brdbe <= (max_rdbe*2))
@@ -678,8 +668,6 @@ if need_batches:
         cs.append(c1)
         us.append(ea_ix[xtrim]) 
         ds.append(d[xtrim])
-    
-
 
     if len(cs):
         cs, us, ds =  np.vstack(cs), np.hstack(us), np.hstack(ds)
@@ -694,10 +682,6 @@ else:  # no Cartesian batches
     cs= comps[q]
     us=np.repeat(a_ix[q2],x[:,2].astype(int))
 
-
-
-
-
 mfp_time=time.time()-mfp_time-total_filtering_time-total_pick_best_time
 
 
@@ -706,6 +690,7 @@ mfp_time=time.time()-mfp_time-total_filtering_time-total_pick_best_time
 
 
 print("Picking best "+str(top_candidates)+" candidates.")
+
 
 #pick best per mass
 s=np.lexsort((ds,us)) #maybe a faster solution than lexsort exists?
@@ -734,8 +719,8 @@ res=res.sort_values(by=["index","charge","appm"]).reset_index(drop=True)
 res=map_umass.merge(res,on="index",how="inner") #map back non-unique mass index
 res=res.groupby("original_index",sort=False).head(top_candidates) #final pick best
 
-#%% combine with original index
 
+#%% combine with original index
 
 
 if len(adducts): 
@@ -746,22 +731,22 @@ hill=res.columns[q].sort_values().tolist()
 res=res[res.columns[~q].tolist()+hill]
 
 
-#generate element string without adducts
+#construct element string
 ecounts=res[hill]
-e_arr=np.array([hill]*len(res))
+e_arr=np.tile(hill,len(res)).reshape(len(res),-1) #np.array([hill]*len(res)) #slow
 e_arr=np.where(ecounts==0,"",e_arr)
-eles=ecounts.astype(str).replace("0","").replace("1","").values
-res["formula"]=np.array([e_arr[:,ix]+eles[:,ix] for ix in range(len(hill))]).sum(axis=0)
+eles=ecounts.applymap(str).replace("0","").replace("1","")
+res["formula"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]]
 
+#generate element string with adducts
 if len(adducts): 
     res[acomps.columns]+=acomps.loc[res.adduct,acomps.columns].values
-
-    #generate element string with adducts
     ecounts=res[hill]
-    e_arr=np.array([hill]*len(res))
+    e_arr=np.tile(hill,len(res)).reshape(len(res),-1) #np.array([hill]*len(res)) #slow
     e_arr=np.where(ecounts==0,"",e_arr)
-    eles=ecounts.astype(str).replace("0","").replace("1","").values
-    res["formula+adduct"]=np.array([e_arr[:,ix]+eles[:,ix] for ix in range(len(hill))]).sum(axis=0)
+    eles=ecounts.applymap(str).replace("0","").replace("1","")
+    res["formula+adduct"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]]
+
 
 
 
@@ -775,18 +760,13 @@ if keep_all:
         res=pd.concat([res,missing_rows])
 
 
-
-    
 #%% Write
 
 if not os.path.exists(MFP_output_folder): os.makedirs(MFP_output_folder)
 if not len(MFP_output_filename): MFP_output_filename="CartMFP_"+Path(input_file).stem+".tsv"
 MFP_outpath=str(Path(MFP_output_folder,MFP_output_filename))
 
-
 #faster writing than pandas
 new_pa_dataframe = pyarrow.Table.from_pandas(res)
 write_options = pc.WriteOptions(delimiter="\t",batch_size=10000)
 pc.write_csv(new_pa_dataframe, MFP_outpath,write_options)
-
-

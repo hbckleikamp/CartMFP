@@ -25,7 +25,6 @@ from collections import Counter
 from npy_append_array import NpyAppendArray
 from contextlib import ExitStack
 
-
 # %% change directory to script directory (should work on windows and mac)
 
 basedir = str(Path(os.path.abspath(getsourcefile(lambda: 0))).parents[0])
@@ -40,13 +39,14 @@ max_mass = 1000         # default 1000
 min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
 max_rdbe = 80
 
-maxmem=0.7
-mass_blowup=40000
+#performance arguments
+maxmem = 10e9 #0.7      # fraction of max free memory usage 
+mass_blowup = 40000     # converting mass to int (higher blowup -> better precision, but higher memory usage)
+keep_all    = False     # also display mass/ adduct combinations for which no molecular formula was found
 
 #filpaths
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
 Cartesian_output_folder = str(Path(basedir, "Cart_Output")) # default: CartMFP folder / Cart_Output
-
 
 remove=True #removes unsorted composition file and sorted index file after building sorted array
 debug=False #True
@@ -73,7 +73,7 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
 
 
     #performance arguments
-    parser.add_argument("-maxmem",  default=0.7, required = False, help="if <=1: max fraction of available RAM used, if >1: mass RAM usage in GB",type=float)  
+    parser.add_argument("-mem",  default=0.7, required = False, help="if <=1: max fraction of available RAM used, if >1: mass RAM usage in GB",type=float)  
     parser.add_argument("-mass_blowup",  default=40000, required = False, help="multiplication factor to make masses integer. Larger values increase RAM usage but reduce round-off errors",type=int)  
     
     
@@ -346,9 +346,6 @@ else:
 unsorted_comp_output_path = str(
     Path(Cartesian_output_folder, Cartesian_output_file))+"_unsorted_comp.npy"
 
-unsorted_mass_output_path = str(
-    Path(Cartesian_output_folder, Cartesian_output_file))+"_unsorted_mass.npy"
-
 comp_output_path = str(
     Path(Cartesian_output_folder, Cartesian_output_file))+"_comp.npy"
 
@@ -397,8 +394,6 @@ ixs=np.arange(0,len(zm)+stepsize,stepsize)
           
 for i in range(len(ixs)-1):
     mass[ixs[i]:ixs[i+1]]=((zm[ixs[i]:ixs[i+1]]*mdf.loc[edf.index].values[:mem_cols].T).sum(axis=1)*mass_blowup).round(0).astype(np.uint64)
-    # mass[ixs[i]:ixs[i+1]]=(zm[ixs[i]:ixs[i+1]]*mdf.loc[edf.index].values[:mem_cols].T).sum(axis=1)#*mass_blowup)#.round(0).astype(np.uint64)
-
 
 #%%
 
@@ -438,13 +433,16 @@ if need_batches:
     
 print("")
 
+cartesian_time=time.time()-cartesian_time
+
+
+
 
 #%% Write unsorted array
 
 
 
 if need_batches:
-
     
     #calculate base mass frequencies
     mc=np.bincount(mass.astype(np.int64))    
@@ -520,7 +518,8 @@ if need_batches:
                 if flag_rdbe_min & flag_rdbe_max: qr =  (brdbe >= (min_rdbe*2)) & (brdbe <= (max_rdbe*2))
                 elif flag_rdbe_min:               qr =  (brdbe >= (min_rdbe*2))
                 elif flag_rdbe_max:               qr =  (brdbe <= (max_rdbe*2))    
-
+                
+                
             # write in partitions
             for p in range(partitions):
                 l,r=umparts[p],umparts[p+1]
@@ -529,24 +528,22 @@ if need_batches:
                     else:                              files[p].append(zm[l:r])  
                     
                 else: files[p].close()
-                
-                    
+            
+  
     print("Completed")
     print(" ")
-    
-
     
 
  
     #%% Write sorted table
     
-    zs=np.zeros(bmax+2,dtype=count_bit)
-    cur_ixs, prev_mass,prev_comps=[],[],0 #placeholders
     
+    zs=np.zeros(bmax+2,dtype=count_bit)
+    cur_ixs,prev_mass,prev_comps=0,[],[]
     with NpyAppendArray(comp_output_path, delete_if_exists=True) as fc:
- 
+        
         for p in np.arange(partitions):
-            print("partition: "+str(p))
+            print("partition: "+str(p)+" ("+str(round(p/partitions*100,2))+" %)")
             
             if not os.path.exists(memfiles[p]):
                 print("Warning: no compositions found for this partitions!")
@@ -566,43 +563,44 @@ if need_batches:
             
             uc=np.bincount(m.astype(np.int64)).astype(count_bit)
             zs[:len(uc)]+=uc
+            
 
             if partitions==1:
                 fc.append(comps[np.argsort(m,kind="mergesort")])
 
             else: #deal with roundoff error between partitions
-
+              
                 s=np.argsort(m,kind="mergesort") #sort
+                
                 
                 if p: #sort combine -> write
                     cur_ixs=uc[m[s[0]]]
                     cur_mass,cur_comps=m[s[:cur_ixs]],comps[s[:cur_ixs]]
                     cmass,ccomps=np.hstack([cur_mass,prev_mass]),np.vstack([cur_comps,prev_comps])
                     fc.append(ccomps[np.argsort(cmass)])
+                
+                
 
-                if p<partitions:  
+                if p<partitions-1:  
                     prev_ixs=uc[-1]
                     prev_mass,prev_comps=m[s[-1*prev_ixs:]],comps[s[-1*prev_ixs:]]
                     fc.append(comps[s[cur_ixs:-1*prev_ixs]])
-                if p==partitions: fc.append(comps[s[cur_ixs:]])
+                if p==partitions-1: fc.append(comps[s[cur_ixs:]])
                 
+
+            if remove:
+                del comps
+                os.remove(memfiles[p])
     
-    #Construct mass index
-    czs=np.cumsum(zs.astype(np.uint64))
-    emp=np.vstack([czs-zs,czs,zs]).T
-    np.save(m2g_output_path,emp)
-            
 
 #%%
         
-if not need_batches:
+if not need_batches: 
     np.save(comp_output_path, zm)
     zs=np.bincount(mass.astype(np.int64))
 
-
 #Construct mass index
-cdzs=np.cumsum(zs)
+cdzs=np.cumsum(zs.astype(np.uint64))
 emp=np.vstack([cdzs-zs,cdzs,zs]).T
 np.save(m2g_output_path,emp)
-
 
