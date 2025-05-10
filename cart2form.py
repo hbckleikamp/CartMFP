@@ -55,7 +55,7 @@ filter_max_mass=False   # postfilter compostions based on max mass
 #filepaths
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
 MFP_output_folder = str(Path(basedir, "MFP_Output"))        # default: CartMFP folder / MFP_Output
-MFP_output_filename="CartMFP_"+Path(input_file).stem+".tsv" # default: CartMFP_ + input_filename + .tsv 
+MFP_output_filename=Path(input_file).stem+"mfp.tsv"         # default: input_filename + _mfp.tsv 
 
 #%% Arguments for execution from command line.
 
