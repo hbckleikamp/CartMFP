@@ -483,8 +483,8 @@ if pre_filter_mass: #picking best candidates
     group_ixs=np.hstack([0,np.argwhere(r_m[1:,1]!=r_m[:-1,1])[:,0]+1,len(r_m)])
     cumr=np.cumsum(emp[r_m[:,0],2])
     cumr=~(cumr-np.repeat(cumr[group_ixs[:-1]],np.diff(group_ixs))>top_candidates)
-    r_m=r_m[create_ranges(np.vstack([group_ixs[:-1],np.vstack([group_ixs[:-1]+numpy_argmax_reduceat(cumr,group_ixs[:-1])+1,group_ixs[1:]]).T.min(axis=1)+1]).T)]
-    
+    r_m=r_m[np.clip(create_ranges(np.vstack([group_ixs[:-1],
+                                     np.vstack([group_ixs[:-1]  +numpy_argmax_reduceat(cumr,group_ixs[:-1])+1,group_ixs[1:]]).T.min(axis=1)+1]).T),0,len(r_m)-1)]
     
     um=np.hstack([r_m[:,0],l_m[:,0]])
     a_ix=np.hstack([r_m[:,1],l_m[:,1]])
