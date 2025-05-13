@@ -642,7 +642,7 @@ def predict_formula(
     
     
     if keep_all: 
-        missing_index=np.argwhere(~np.in1d(np.arange(lm),np.unique(us))).tolist()
+        missing_index=np.argwhere(~np.in1d(np.arange(lm),np.unique(us))).flatten().tolist()
         
         if len(missing_index):
             missing_rows=mass_df[["index","input_mass"]].drop_duplicates().set_index("index").loc[missing_index,:].reset_index()
