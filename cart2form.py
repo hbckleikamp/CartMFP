@@ -376,7 +376,6 @@ def predict_formula(
             print("Warning! higher element counts observed in allowed composition than is present in cartesian table!")
     
     # !Parse composition string
-    start_time = time.time()
     Xrdbe = np.argwhere(elements == "C").flatten()
     Yrdbe = np.argwhere(np.in1d(elements,["H", "F", "Cl", "Br", "I"])).flatten()
     Zrdbe = np.argwhere(np.in1d(elements,["N", "P"])).flatten()
@@ -453,10 +452,6 @@ def predict_formula(
     mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]*mass_df["charge"]
     
     mass_df=mass_df[mass_df["mass"]<max_mass].reset_index(drop=True) #filter on max mass
-    
-    
-    adduct_cats=mass_df["adduct"].values.flatten()
-    charge_cats=mass_df["charge"].values
     masses=mass_df["mass"].values
     
     peak_mass = masses*mass_blowup
@@ -470,8 +465,7 @@ def predict_formula(
     #%% MFP
     
     cartesian_time=time.time()
-    
-    start_time=time.time()
+
     print("Loading index files")
     print("")
     
