@@ -347,7 +347,8 @@ def predict_formula(
     #%% read input masses
     
 
-    if type(input_file)==int or type(input_file)==float: masses=[input_file]    #single numeric mass
+    if   type(input_file)==int or type(input_file)==float:                        masses=[input_file]    #single numeric mass
+    elif isinstance(input_file,pd.Series) or isinstance(input_file,pd.DataFrame): masses=input_file      #when used as function
     
     elif type(input_file)==str: #str -> filepath  
         print("Reading table: "+str(input_file))
@@ -361,9 +362,13 @@ def predict_formula(
             if check: masses=masses["mass"].astype(float)
             else: masses=pd.read_csv(input_file).iloc[:,-1]
     
-    else: masses=list(input_file) #assumes 
+    else: masses=list(input_file) #assumes numeric format
     
-    mass_ix=np.arange(len(masses))
+    if isinstance(masses,pd.Series) or isinstance(masses,pd.DataFrame):  mass_ix=masses.index #keep original index
+    else:                                                                mass_ix=np.arange(len(masses)) #make new index
+
+        
+        
     masses,umass_ix=np.unique(masses,return_inverse=True)
     map_umass=pd.DataFrame(np.vstack([mass_ix,umass_ix]).T,columns=["original_index","index"])
         
@@ -784,7 +789,7 @@ def predict_formula(
             dts=pd.DataFrame([[missing_columns[ix],type(i)] for ix,i in enumerate(res[missing_columns].iloc[0])],columns=["col","dt"])
             missing_rows[missing_columns]=0  
             missing_rows[dts.loc[dts.dt.astype(str).str.contains("str"),"col"].tolist()]=""
-            res=pd.concat([res,missing_rows]).sort_values(by="original_index")
+            res=pd.concat([res,missing_rows])
     #%%        
     return res
 
