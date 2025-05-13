@@ -784,7 +784,7 @@ def predict_formula(
             dts=pd.DataFrame([[missing_columns[ix],type(i)] for ix,i in enumerate(res[missing_columns].iloc[0])],columns=["col","dt"])
             missing_rows[missing_columns]=0  
             missing_rows[dts.loc[dts.dt.astype(str).str.contains("str"),"col"].tolist()]=""
-            res=pd.concat([res,missing_rows])
+            res=pd.concat([res,missing_rows]).sort_values(by="original_index")
     #%%        
     return res
 
