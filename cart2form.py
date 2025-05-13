@@ -642,12 +642,17 @@ def predict_formula(
     
     
     if keep_all: 
-        missing_index=np.argwhere(~np.in1d(np.arange(lm),np.unique(us))).flatten().tolist()
-        
+
+        missing_index=list(set(np.arange(lm))-set(res["original_index"]))
         if len(missing_index):
             missing_rows=mass_df[["index","input_mass"]].drop_duplicates().set_index("index").loc[missing_index,:].reset_index()
-            missing_rows[res.columns[2:]]=0
-            missing_rows["adduct"]=""
+            missing_rows=missing_rows.merge(map_umass)
+         
+            #add missing columns
+            missing_columns=list(set(res.columns)-set(missing_rows.columns))
+            dts=pd.DataFrame([[missing_columns[ix],type(i)] for ix,i in enumerate(res[missing_columns].iloc[0])],columns=["col","dt"])
+            missing_rows[missing_columns]=0  
+            missing_rows[dts.loc[dts.dt.astype(str).str.contains("str"),"col"].tolist()]=""
             res=pd.concat([res,missing_rows])
             
             
