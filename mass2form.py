@@ -715,7 +715,7 @@ def predict_formula(
             if len(Xrdbe[Xrdbe<mem_cols]): rdbe =rdbe+cs[:, Xrdbe].sum(axis=1)*2
             if len(Yrdbe[Yrdbe<mem_cols]): rdbe =rdbe-cs[:, Yrdbe].sum(axis=1)
             if len(Zrdbe[Zrdbe<mem_cols]): rdbe =rdbe+cs[:, Zrdbe].sum(axis=1) 
-            if flag_rdbe_min & flag_rdbe_max: q = (rdbe >= (min_rdbe*2)) & (brdbe <= (max_rdbe*2))
+            if flag_rdbe_min & flag_rdbe_max: q = (rdbe >= (min_rdbe*2)) & (rdbe <= (max_rdbe*2))
             elif flag_rdbe_min:               q = (rdbe >= (min_rdbe*2))
             elif flag_rdbe_max:               q = (rdbe <= (max_rdbe*2))
             cs,us=cs[q],us[q]
