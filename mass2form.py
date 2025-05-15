@@ -718,15 +718,15 @@ def predict_formula(
     
     print("Picking best "+str(top_candidates)+" candidates.")
     
-    
-    #pick best per mass
-    s=np.lexsort((ds,us)) #maybe a faster solution than lexsort exists?
-    ds=ds[s]
-    group_ixs=np.argwhere(us[s[1:]]!=us[s[:-1]])[:,0]+1
-    max_mass=ds[np.hstack([0,group_ixs])+top_candidates]+1 #+1 for roundoff error
-    q=s[np.argwhere((ds-np.repeat(max_mass,np.diff(np.hstack([0,group_ixs,len(ds)]))))<0)[:,0]]
-    cs,us=cs[q],us[q]
-    
+    if need_batches:
+        #pick best per mass
+        s=np.lexsort((ds,us)) #maybe a faster solution than lexsort exists?
+        ds=ds[s]
+        group_ixs=np.argwhere(us[s[1:]]!=us[s[:-1]])[:,0]+1
+        max_mass=ds[np.hstack([0,group_ixs])+top_candidates]+1 #+1 for roundoff error
+        q=s[np.argwhere((ds-np.repeat(max_mass,np.diff(np.hstack([0,group_ixs,len(ds)]))))<0)[:,0]]
+        cs,us=cs[q],us[q]
+
     
     #pick best per input mass within ppm
     print("")
