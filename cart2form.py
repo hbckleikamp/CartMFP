@@ -337,7 +337,7 @@ def predict_formula(
     else: min_rdbe=cart_rdbe_min
     
     if type(max_rdbe)!=str:
-        if max_rdbe==cart_rdbe_max:
+        if max_rdbe!=cart_rdbe_max:
             print("Warning! supplied max rdbe "+str(max_rdbe)+" is different from cartesian max rdbe "+str(cart_rdbe_max))
             pre_filter_mass=False
             filter_rdbe=True
@@ -517,8 +517,8 @@ def predict_formula(
         group_ixs=np.hstack([0,np.argwhere(r_m[1:,1]!=r_m[:-1,1])[:,0]+1,len(r_m)])
         cumr=np.cumsum(emp[r_m[:,0],2])
         cumr=~(cumr-np.repeat(cumr[group_ixs[:-1]],np.diff(group_ixs))>top_candidates)
-        r_m=r_m[np.clip(create_ranges(np.vstack([group_ixs[:-1],
-                                         np.vstack([group_ixs[:-1]  +numpy_argmax_reduceat(cumr,group_ixs[:-1])+1,group_ixs[1:]]).T.min(axis=1)+1]).T),0,len(r_m)-1)]
+        rx=create_ranges(np.vstack([group_ixs[:-1],np.vstack([group_ixs[:-1]  +numpy_argmax_reduceat(cumr,group_ixs[:-1])+1,group_ixs[1:]]).T.min(axis=1)+1]).T)
+        r_m=r_m[rx[rx<len(r_m)]] #clip
         
         um=np.hstack([r_m[:,0],l_m[:,0]])
         a_ix=np.hstack([r_m[:,1],l_m[:,1]])
