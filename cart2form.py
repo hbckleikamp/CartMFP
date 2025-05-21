@@ -302,7 +302,7 @@ def predict_formula(
         ):
 
 
-    #%% Check filepaths
+    #% Check filepaths
     if not os.path.exists(composition_file):  composition_file=os.path.normpath(composition_file)
     if not os.path.exists(composition_file):  composition_file=composition_file.replace("[0,","[")
     if not len(mass_index_file): mass_index_file=composition_file.replace("_comp.npy","_m2g.npy")
@@ -311,7 +311,7 @@ def predict_formula(
     
     
     
-    #%% Parse information from composition output
+    #% Parse information from composition output
     
     fs=Path(composition_file).stem
     mass_blowup=int(fs.split("_b")[-1].split("max")[0])
@@ -377,7 +377,7 @@ def predict_formula(
     Yrdbe = np.argwhere(np.in1d(elements,["H", "F", "Cl", "Br", "I"])).flatten()
     Zrdbe = np.argwhere(np.in1d(elements,["N", "P"])).flatten()
     
-    #%% read input masses
+    #% read input masses
     
     if   type(input_file)==int or type(input_file)==float:                        masses=[input_file]    #single numeric mass
     elif isinstance(input_file,pd.Series) or isinstance(input_file,pd.DataFrame): masses=input_file      #when used as function
@@ -418,8 +418,8 @@ def predict_formula(
     
     if len(adducts):
         adduct_sign    =[-1  if a[0]=="-" else  1  for a in adducts]
-        adduct_mass=[getMz(a[1:]) for a in adducts]
-        
+        adduct_mass=[getMz(a) for a in adducts]
+
         adf=pd.DataFrame([adducts,adduct_mass]).T
         adf.columns=["adduct","adduct_mass"]
         adf["adduct_mass"]=adf["adduct_mass"]*adduct_sign
@@ -446,7 +446,7 @@ def predict_formula(
     ### Add charges ###
     mass_df["charge"]=[charges]*len(mass_df)
     mass_df=mass_df.explode("charge")
-    mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]*mass_df["charge"]
+    mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]+mass_df["adduct_mass"]*mass_df["charge"]
     
     mass_df=mass_df[mass_df["mass"]<max_mass].reset_index(drop=True) #filter on max mass
     masses=mass_df["mass"].values
@@ -455,8 +455,8 @@ def predict_formula(
     pmi=peak_mass.astype(int)
     peak_mass_low = np.clip((peak_mass*(1-ppm/1e6)),0,bmax).astype(np.int64)
     peak_mass_high = np.clip((peak_mass*(1+ppm/1e6)),0,bmax).astype(np.int64)
-    
-    #%% MFP
+
+    #% MFP
     
     cartesian_time=time.time()
 
@@ -473,66 +473,54 @@ def predict_formula(
     
     #% split into peak r and peak l
     
+    
+    
+ 
     if pre_filter_mass: #picking best candidates
         print("Filtering masses pre MFP")
         print("")
     
-        ### left side
-        
-        #pre-trim
-        l_ix=np.repeat(np.arange(len(peak_mass)),pmi-peak_mass_low)
-        l_r=create_ranges(np.vstack([peak_mass_low,pmi]).T)
-        l_m=np.vstack([l_r,l_ix]).T
-        
-        l_m=l_m[emp[l_m[:,0],2]>0] #remove non-existing (but why?)
-        group_ixs=np.hstack([0,np.argwhere(l_m[1:,1]!=l_m[:-1,1])[:,0]+1,len(l_m)])
+        #trim masses which are already above top candidates
+        q=emp[pmi,2]<top_candidates
+        peak_mass_low[~q],peak_mass_high[~q]=pmi[~q]-1,pmi[~q]+1
     
-        #trim with neighbour candidates
-        l_m=l_m[create_ranges(np.vstack([(np.vstack([group_ixs[:-1],
-                                                     group_ixs[1:]-top_candidates-1]).T).max(axis=1),group_ixs[1:]]).T)][::-1] #reverse order
-        
-        #cumsum trim
+        ### trim left side
+        l_ix=np.repeat(np.arange(len(peak_mass[q])),pmi[q]-peak_mass_low[q]+1) #a_ix l
+        l_r=create_ranges(np.vstack([peak_mass_low[q],pmi[q]+1]).T)
+        l_m=np.vstack([l_r,l_ix,emp[l_r,2]]).T[::-1]  #mass, a_ix
         group_ixs=np.hstack([0,np.argwhere(l_m[1:,1]!=l_m[:-1,1])[:,0]+1,len(l_m)])
-        cuml=np.cumsum(emp[l_m[:,0],2])
-        cuml=~(cuml-np.repeat(cuml[group_ixs[:-1]],np.diff(group_ixs))>top_candidates)
+        cuml=l_m[:,2].cumsum()
+        cuml=(cuml-np.repeat(cuml[group_ixs[:-1]],np.diff(group_ixs))+cuml[0]>top_candidates)
+        left_edge=np.array([np.argmax(cuml[group_ixs[x]:group_ixs[x+1]]) for x in range(len(group_ixs)-1)])[::-1]        
+        ql=left_edge>0
         
-        l_m=l_m[create_ranges(np.vstack([group_ixs[:-1],
-                                         np.vstack([group_ixs[:-1]+numpy_argmax_reduceat(cuml,group_ixs[:-1]),group_ixs[1:]]).T.min(axis=1)+1]).T)]
+        peak_mass_low[q][ql]=pmi[q][ql]-left_edge[ql]
         
-    
-            
-        ### right side
-        
-        #pre-trim
-        r_ix=np.repeat(np.arange(len(peak_mass)),peak_mass_high+1-pmi)
-        r_r=create_ranges(np.vstack([pmi,peak_mass_high+1]).T)
+        ### trim right side
+        r_ix=np.repeat(np.arange(len(peak_mass[q])),peak_mass_high[q]+1-pmi[q])
+        r_r=create_ranges(np.vstack([pmi[q],peak_mass_high[q]+1]).T)
         r_m=np.vstack([r_r,r_ix]).T
-        
-        r_m=r_m[emp[r_m[:,0],2]>0] #remove non-existing
-        group_ixs=np.hstack([0,np.argwhere(r_m[1:,1]!=r_m[:-1,1])[:,0]+1,len(r_m)])
-        r_m=r_m[create_ranges(np.vstack([group_ixs[:-1],
-                                         (np.vstack([group_ixs[:-1] +top_candidates,group_ixs[1:]]).T).min(axis=1)]).T)]
-        
-        #cumsum trim
         group_ixs=np.hstack([0,np.argwhere(r_m[1:,1]!=r_m[:-1,1])[:,0]+1,len(r_m)])
         cumr=np.cumsum(emp[r_m[:,0],2])
-        cumr=~(cumr-np.repeat(cumr[group_ixs[:-1]],np.diff(group_ixs))>top_candidates)
-        rx=create_ranges(np.vstack([group_ixs[:-1],np.vstack([group_ixs[:-1]  +numpy_argmax_reduceat(cumr,group_ixs[:-1]),group_ixs[1:]]).T.min(axis=1)+1]).T)
-        r_m=r_m[rx[rx<len(r_m)]] #clip
-        
-        um=np.hstack([r_m[:,0],l_m[:,0]])
-        a_ix=np.hstack([r_m[:,1],l_m[:,1]])
+        cumr=(cumr-np.repeat(cumr[group_ixs[:-1]],np.diff(group_ixs))>top_candidates)
+        right_edge=np.array([np.argmax(cumr[group_ixs[x]:group_ixs[x+1]]) for x in range(len(group_ixs)-1)])      
+        qr=right_edge>0
+
+        peak_mass_high[q][qr]=pmi[q][qr]-right_edge[qr]
+
     
     
-    else:
-        d=(peak_mass_high-peak_mass_low)
-        um=(np.repeat(peak_mass_low,d)+(np.arange(d.sum()) - np.repeat(np.cumsum(d)-d, d))).astype(np.uint64)
-        a_ix=np.repeat(np.arange(len(masses)),d)
+    d=(peak_mass_high-peak_mass_low)
+    um=(np.repeat(peak_mass_low,d)+(np.arange(d.sum()) - np.repeat(np.cumsum(d)-d, d))).astype(np.uint64)
+    a_ix=np.repeat(np.arange(len(masses)),d)
     
+    #remove masses without solution
+    q=emp[um,2]>0
+    um,a_ix=um[q],a_ix[q]
     
+    #duplication in um
     
-    
-    #%% ### Formula prediction
+    #% ### Formula prediction
 
     x = emp[um].astype(np.int64)
     mr=np.arange(x[:,2].sum()) - np.repeat(np.cumsum(x[:,2])-x[:,2], x[:,2])
@@ -544,7 +532,7 @@ def predict_formula(
     
     mfp_time = time.time()-mfp_time
     
-    #%% Chemical filtering
+    #% Chemical filtering
     
     
     flag_rdbe_min = type(min_rdbe) == float or type(min_rdbe) == int
@@ -582,7 +570,7 @@ def predict_formula(
     cs, us, ms = cs[q], us[q],ms[q]
     
     
-    #%% Pick best candidates
+    #% Pick best candidates
     
     
     
@@ -601,13 +589,16 @@ def predict_formula(
                   -cs[:, Yrdbe].sum(axis=1).astype(rdbe_bitlim)
                   +cs[:, Zrdbe].sum(axis=1).astype(rdbe_bitlim))/2+1
     res[elements]=cs
+    res=res.drop_duplicates()
     res=res[res["appm"]<=ppm]
     
     res=res.sort_values(by=["index","charge","appm"]).reset_index(drop=True)   
+    
+
     res=map_umass.merge(res) #map back non-unique mass index
     res=res.groupby("original_index",sort=False).head(top_candidates)
     
-    #%% Combine with original index
+    #% Combine with original index
     
     
     if len(adducts): 
