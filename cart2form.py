@@ -300,7 +300,7 @@ def predict_formula(
     #is there a more elegant way to pass all these arguments?        
         
         ):
-
+#%%
 
     #% Check filepaths
     if not os.path.exists(composition_file):  composition_file=os.path.normpath(composition_file)
@@ -446,13 +446,14 @@ def predict_formula(
     ### Add charges ###
     mass_df["charge"]=[charges]*len(mass_df)
     mass_df=mass_df.explode("charge")
-    mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]+mass_df["adduct_mass"]*mass_df["charge"]
+    mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]*mass_df["charge"]
+    mass_df[["input_mass","adduct_mass","mass"]]=mass_df[["input_mass","adduct_mass","mass"]].astype(np.float64)
     
     mass_df=mass_df[mass_df["mass"]<max_mass].reset_index(drop=True) #filter on max mass
     masses=mass_df["mass"].values
     
     peak_mass = masses*mass_blowup
-    pmi=peak_mass.astype(int)
+    pmi=np.round(peak_mass,0).astype(int)
     peak_mass_low = np.clip((peak_mass*(1-ppm/1e6)),0,bmax).astype(np.int64)
     peak_mass_high = np.clip((peak_mass*(1+ppm/1e6)),0,bmax).astype(np.int64)
 
@@ -472,10 +473,6 @@ def predict_formula(
     
     
     #% split into peak r and peak l
-    
-    
-    
- 
     if pre_filter_mass: #picking best candidates
         print("Filtering masses pre MFP")
         print("")
@@ -506,9 +503,9 @@ def predict_formula(
         right_edge=np.array([np.argmax(cumr[group_ixs[x]:group_ixs[x+1]]) for x in range(len(group_ixs)-1)])      
         qr=right_edge>0
 
-        peak_mass_high[q][qr]=pmi[q][qr]-right_edge[qr]
+        peak_mass_high[q][qr]=pmi[q][qr]+right_edge[qr]
 
-    
+
     
     d=(peak_mass_high-peak_mass_low)
     um=(np.repeat(peak_mass_low,d)+(np.arange(d.sum()) - np.repeat(np.cumsum(d)-d, d))).astype(np.uint64)
@@ -529,10 +526,9 @@ def predict_formula(
     cs= comps[q]
     ms=np.sum(cs*mdf.loc[elements].values.T,axis=1) #+adduct mass?
     us=np.repeat(a_ix,x[:,2].astype(int))
-    
     mfp_time = time.time()-mfp_time
     
-    #% Chemical filtering
+    # #% Chemical filtering
     
     
     flag_rdbe_min = type(min_rdbe) == float or type(min_rdbe) == int
@@ -569,11 +565,8 @@ def predict_formula(
             q=q & ev>=elow & ev<=ehigh
     cs, us, ms = cs[q], us[q],ms[q]
     
-    
+
     #% Pick best candidates
-    
-    
-    
     print("Picking best "+str(top_candidates)+" candidates.")
     
     print("")
