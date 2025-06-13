@@ -10,7 +10,6 @@ Created on Tue Oct 29 13:20:05 2024
 #%% Modules
 
 from inspect import getsourcefile
-import time
 import warnings
 from functools import reduce
 import operator
@@ -23,8 +22,8 @@ import numpy as np
 from collections import Counter
 
 from npy_append_array import NpyAppendArray
-from contextlib import ExitStack
 from numpy.lib.format import open_memmap
+from contextlib import ExitStack
 
 # %% change directory to script directory (should work on windows and mac)
 
@@ -40,13 +39,15 @@ max_mass = 1000         # default 1000
 min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
 max_rdbe = 80
 
-maxmem=0.7
-mass_blowup=100000 #int(4e4) #1000000 #40000
 
-#filpaths
+#performance arguments
+maxmem = 10e9 #0.7      # fraction of max free memory usage 
+mass_blowup = 100000 #40000     # converting mass to int (higher blowup -> better precision, but higher memory usage)
+write_mass=True                   # also writes float array of masses
+
+#filepaths
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
 Cartesian_output_folder = str(Path(basedir, "Cart_Output")) # default: CartMFP folder / Cart_Output
-
 
 remove=True #removes unsorted composition file and sorted index file after building sorted array
 debug=False #True
@@ -73,9 +74,10 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
 
 
     #performance arguments
-    parser.add_argument("-maxmem",  default=0.7, required = False, help="if <=1: max fraction of available RAM used, if >1: mass RAM usage in GB",type=float)  
-    parser.add_argument("-mass_blowup",  default=40000, required = False, help="multiplication factor to make masses integer. Larger values increase RAM usage but reduce round-off errors",type=int)  
-    
+    parser.add_argument("-mem",  default=0.7, required = False, help="if <=1: max fraction of available RAM used, if >1: mass RAM usage in GB",type=float)  
+    parser.add_argument("-mass_blowup",  default=100000, required = False, help="multiplication factor to make masses integer. Larger values increase RAM usage but reduce round-off errors",type=int)  
+    parser.add_argument("-write_mass",  default=True, required = False, help="Also create a lookup table for float masses",type=int)  
+        
     
     parser.add_argument("-remove",  default=True, required = False, help="removes unsorted composition file and sorted index file after building sorted array")  
     parser.add_argument("-d","--debug",  default=False, required = False, help="")  
@@ -254,7 +256,6 @@ else:  # retrieve up to date mass table from nist
 
 # %% Construct MFP space
 
-cartesian_time = time.time()
 
 # % Construct elemental space dataframe
 edf=pd.DataFrame([i.replace(",","[").split("[") if "," in i else [i.split("[")[0],0,i.split("[")[-1]] for i in composition.split("]")[:-1]] ,columns=["symbol","low","high"]).set_index("symbol")
@@ -346,8 +347,8 @@ else:
 unsorted_comp_output_path = str(
     Path(Cartesian_output_folder, Cartesian_output_file))+"_unsorted_comp.npy"
 
-unsorted_mass_output_path = str(
-    Path(Cartesian_output_folder, Cartesian_output_file))+"_unsorted_mass.npy"
+mass_output_path = str(
+    Path(Cartesian_output_folder, Cartesian_output_file))+"_mass.npy"
 
 comp_output_path = str(
     Path(Cartesian_output_folder, Cartesian_output_file))+"_comp.npy"
@@ -385,10 +386,7 @@ arrays = edf.arr.values[:mem_cols].tolist()
 
 
 zm = cartesian(arrays,bitlim=bitlim)
-
-#%% batched addition
 mass = np.zeros(len(zm), dtype=np.uint64)
-
 
 #memory efficient batched addition 
 remRam=maxRam-(mm.free-psutil.virtual_memory().free)
@@ -397,7 +395,6 @@ ixs=np.arange(0,len(zm)+stepsize,stepsize)
           
 for i in range(len(ixs)-1):
     mass[ixs[i]:ixs[i+1]]=((zm[ixs[i]:ixs[i+1]]*mdf.loc[edf.index].values[:mem_cols].T).sum(axis=1)*mass_blowup).round(0).astype(np.uint64)
-
 
 #%%
 
@@ -421,7 +418,6 @@ if need_batches:
 
     batches = reduce(operator.mul, edf.iloc[mem_cols:]["high"].values+1, 1)
     
-
     # compute cartesian product of the remaining elements
     arrays = edf.arr.values[mem_cols:].tolist()
     print("")
@@ -438,17 +434,15 @@ if need_batches:
 print("")
 
 
+
+
 #%% Write unsorted array
 
-#make count table memmap
-#emp = np.memmap(m2g_output_path, mode="w+", shape=(bmax,2),dtype=bits(bmax))
-
-
 emp = open_memmap(m2g_output_path, mode="w+", shape=(bmax+1*mass_blowup,2),dtype=bits(bmax))
-#%%
+
 if need_batches:
 
-    
+
     #calculate base mass frequencies
     mc=np.bincount(mass.astype(np.int64))    
     cmc=np.cumsum(mc)           
@@ -462,8 +456,7 @@ if need_batches:
 
     #figure out correct partitions
     xs=np.linspace(0,len(mc)-1,1000).round(0).astype(int)
-    vs=np.add.reduceat(mc,xs)                       #cant handle blowup 5000000
-   
+    vs=np.add.reduceat(mc,xs)
     czs=np.cumsum(vs*[np.sum(x>am) for x in xs])
     mass_ixs=np.hstack([np.interp(np.linspace(0,czs[-1],partitions+1),czs,xs).astype(int)])[1:-1]
 
@@ -485,6 +478,11 @@ if need_batches:
         if len( batch_rdbeZ): batch_rdbe +=bm[:, batch_rdbeZ].sum(axis=1)
 
 
+    test=[]                   #test
+    zmass_ixs=mass_ixs.copy() #test
+    total_comps=np.int64(0)
+    
+    
     with ExitStack() as stack:
         files = [stack.enter_context(NpyAppendArray(fname, delete_if_exists=True) ) for fname in memfiles]
 
@@ -517,39 +515,43 @@ if need_batches:
                     ixs=np.hstack([0,np.cumsum(ds)])
                     umparts=np.hstack([[0]*np.sum(~q),bs[:,0]+np.array([np.argmax(d[ixs[i]:ixs[i+1]]) for i,_ in enumerate(ixs[:-1])])]).astype(int)
             umparts=np.hstack([0,umparts,len(zm)]).astype(int)
-
+             
             #rdbe filtering
             if flag_rdbe_max or flag_rdbe_min:
                 brdbe=base_rdbe+batch_rdbe[ib]
                 if flag_rdbe_min & flag_rdbe_max: qr =  (brdbe >= (min_rdbe*2)) & (brdbe <= (max_rdbe*2))
                 elif flag_rdbe_min:               qr =  (brdbe >= (min_rdbe*2))
                 elif flag_rdbe_max:               qr =  (brdbe <= (max_rdbe*2))    
-
+                
             # write in partitions
             for p in range(partitions):
                 l,r=umparts[p],umparts[p+1]
                 if r>l:
                     if flag_rdbe_max or flag_rdbe_min: files[p].append(zm[l:r][qr[l:r]])     
                     else:                              files[p].append(zm[l:r])  
-                    
                 else: files[p].close()
                 
-                    
+            
     print("Completed")
     print(" ")
     
 
-    
 
  
     #%% Write sorted table
+
+    prev_mass,prev_mass_f,prev_comps=[],[],[]
+    cur_ixs=0 
+    borders=[]
+   
+    with ExitStack() as stack:
+        
+        fc=stack.enter_context(NpyAppendArray(comp_output_path, delete_if_exists=True))
+        if write_mass: fm=stack.enter_context(NpyAppendArray(mass_output_path, delete_if_exists=True))
+        
     
-    prev_mass,prev_comps,cur_ixs=[],[],0 #placeholders
-    
-    with NpyAppendArray(comp_output_path, delete_if_exists=True) as fc:
- 
         for p in np.arange(partitions):
-            print("partition: "+str(p))
+            print("partition: "+str(p)+" ("+str(round(p/partitions*100,2))+" %)")
             
             if not os.path.exists(memfiles[p]):
                 print("Warning: no compositions found for this partitions!")
@@ -559,58 +561,75 @@ if need_batches:
             comps=np.load(memfiles[p])
             
             #calculate mass (memory efficient batched addition) 
-            m = np.zeros(len(comps), dtype=np.uint64)
+            mi = np.zeros(len(comps), dtype=np.uint64)
+            if write_mass: mf = np.zeros(len(comps), dtype=np.float32) #can be made full float64 for furter speedup
             remRam=maxRam-(mm.free-psutil.virtual_memory().free)
             stepsize=np.round(remRam/(a64*len(edf))/2,0).astype(int)
             ixs=np.arange(0,len(comps)+stepsize,stepsize)
-            for im in range(len(ixs)-1):
-                m[ixs[im]:ixs[im+1]]=(np.sum(comps[ixs[im]:ixs[im+1]]*mdf.loc[edf.index].values.T,axis=1)*mass_blowup).round(0).astype(int)
-
-            
-            uc=np.bincount(m.astype(np.int64)).astype(count_bit)
+            for im in range(len(ixs)-1):                
+                f=np.sum(comps[ixs[im]:ixs[im+1]]*mdf.loc[edf.index].values.T,axis=1) #float calculation
+                mi[ixs[im]:ixs[im+1]]=(f*mass_blowup).round(0).astype(int)
+                if write_mass: mf[ixs[im]:ixs[im+1]]=f
+                del f
+                
+            uc=np.bincount(mi.astype(np.int64)).astype(count_bit)
             emp[:len(uc),1]+=uc
+            s=np.argsort(mi,kind="mergesort") #sort
 
             if partitions==1:
-                fc.append(comps[np.argsort(m,kind="mergesort")])
-
+                fc.append(comps[s])
+                if write_mass: fm.append(mf[s])
             else: #deal with roundoff error between partitions
 
-                s=np.argsort(m,kind="mergesort") #sort
-                
-                if p: #sort combine -> write
-                    cur_ixs=uc[m[s[0]]]
-                    cur_mass,cur_comps=m[s[:cur_ixs]],comps[s[:cur_ixs]]
-                    cmass,ccomps=np.hstack([cur_mass,prev_mass]),np.vstack([cur_comps,prev_comps])
-                    fc.append(ccomps[np.argsort(cmass)])
 
-                if p<partitions:  
+                if p: #sort combine -> write
+                    cur_ixs=uc[mi[s[0]]]
+                    cur_mass,cur_comps=mi[s[:cur_ixs]],comps[s[:cur_ixs]]
+            
+                    cmass,ccomps=np.hstack([cur_mass,prev_mass]),np.vstack([cur_comps,prev_comps])
+                    ss=np.argsort(cmass)
+                    fc.append(ccomps[ss])
+                    
+                    if write_mass:
+                        cur_mass_f=mf[s[:cur_ixs]]
+                        cmass_f=np.hstack([cur_mass_f,prev_mass_f])
+                        fm.append(cmass_f[ss]) 
+                        
+                if p<partitions-1:  
                     prev_ixs=uc[-1]
-                    prev_mass,prev_comps=m[s[-1*prev_ixs:]],comps[s[-1*prev_ixs:]]
+                    prev_mass,prev_comps=mi[s[-1*prev_ixs:]],comps[s[-1*prev_ixs:]]
                     fc.append(comps[s[cur_ixs:-1*prev_ixs]])
-                if p==partitions: fc.append(comps[s[cur_ixs:]])
-        
+                    
+                    if write_mass: 
+                        prev_mass_f=mf[s[-1*prev_ixs:]]
+                        fm.append(mf[s[cur_ixs:-1*prev_ixs]])
+                
+                if p==partitions-1: 
+                    fc.append(comps[s[cur_ixs:]])
+                    if write_mass: fm.append(mf[s[cur_ixs:]])
+
             if remove:
                 del comps
                 os.remove(memfiles[p])
-        
-        
+                
             #flush, close, reopen
             emp.flush()
             emp._mmap.close()
             emp = open_memmap(m2g_output_path, mode="r+")
-
+    
     
 
-#%%
+
+
+#%% write index lookup table
         
 if not need_batches:
     np.save(comp_output_path, zm)
-    emp[:(mass.max()+1),2]=np.bincount(mass.astype(np.int64))
+    emp[:(mass.max()+1).astype(int),1]=np.bincount(mass.astype(np.int64))
 
 
 nz=np.argwhere(emp[:,1])[:,0]
 emp[nz,0]=np.cumsum(emp[nz,1])-emp[nz,1]
 emp.flush()
-
 
 
