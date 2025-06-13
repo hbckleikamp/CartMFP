@@ -420,22 +420,29 @@ def predict_formula(
     Xrdbe = np.argwhere(elements == "C").flatten()
     Yrdbe = np.argwhere(np.in1d(elements,["H", "F", "Cl", "Br", "I"])).flatten()
     Zrdbe = np.argwhere(np.in1d(elements,["N", "P"])).flatten()
-    
+
     #% read input masses 
     
-    if os.path.exists(input_file):
+    if   type(input_file)==int or type(input_file)==float:                        masses=[input_file]    #single numeric mass
+    elif isinstance(input_file,pd.Series) or isinstance(input_file,pd.DataFrame): masses=input_file      #when used as function
+    elif type(input_file)==str: #str -> filepath  
         print("Reading table: "+str(input_file))
         print("")
+        if not os.path.exists(input_file):        raise ValueError("Input file  file "+input_file+" not found!, run space2cart.py")
+        #read table input
+        check,masses = read_input(input_file,Keyword="mz") 
+        if check: masses=masses["mz"].astype(float).values
+        else:
+            check,masses = read_input(input_file,Keyword="mass")
+            if check: masses=masses["mass"].astype(float)
+            else: masses=pd.read_csv(input_file).iloc[:,-1]
+            
+    else: masses=list(input_file) #assumes numeric format
     
-    #read masses
-    check,masses = read_input(input_file,Keyword="mz")
-    mass_ix=np.arange(len(masses))
-    if check: masses,umass_ix=np.unique(masses["mz"].astype(float).values,return_inverse=True) 
-    else:
-        check,masses = read_input(input_file,Keyword="mass")
-        if check: masses,umass_ix=np.unique(masses["mass"].astype(float).values,return_inverse=True)
-        else: masses,umass_ix=np.unique(pd.read_csv(input_file).iloc[:,-1],return_inverse=True)
-        
+    if isinstance(masses,pd.Series) or isinstance(masses,pd.DataFrame):  mass_ix=masses.index #keep original index
+    else:                                                                mass_ix=np.arange(len(masses)) #make new index
+
+    masses,umass_ix=np.unique(masses,return_inverse=True)
     map_umass=pd.DataFrame(np.vstack([mass_ix,umass_ix]).T,columns=["original_index","index"])
  
     
