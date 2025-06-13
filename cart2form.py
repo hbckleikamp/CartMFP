@@ -58,7 +58,6 @@ mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing e
 MFP_output_folder = str(Path(basedir, "MFP_Output"))        # default: CartMFP folder / MFP_Output
 MFP_output_filename=""                                      # default: CartMFP_ + input_filename + .tsv 
 
-
 #%% Arguments for execution from command line.
 
 def parse_path(s):
@@ -328,7 +327,7 @@ def predict_formula(
     ppm      =   ppm,  
     top_candidates  = top_candidates,  
     keep_all        = keep_all, 
-    add_formla      = add_formula,
+    add_formula      = add_formula,
     pre_filter_mass = pre_filter_mass,
     filter_rdbe     = filter_rdbe,
     filter_max_mass = filter_max_mass,
@@ -608,20 +607,20 @@ def predict_formula(
     n=min(top_candidates,len(ms))
     uu,uc=np.unique(us,return_counts=True)
     q=uc<top_candidates
-    lt,rt=uu[q],uu[~q]
+    lt,rt,lu,ru,l,r=uu[q],uu[~q],[],[],[],[]
     
     tree = KDTree(ms.reshape(1,-1).T, leaf_size=200)  
     
-    #query with radius (all candidates)
-    l=tree.query_radius(m[lt].reshape(1,-1).T,r=m[lt]*ppm/1e6)
-    l,lu=np.hstack(l),np.repeat(lt,[len(i) for i in l])
+    if len(lt): #query with radius (all candidates)
+        l=tree.query_radius(m[lt].reshape(1,-1).T,r=m[lt]*ppm/1e6)
+        l,lu=np.hstack(l),np.repeat(lt,[len(i) for i in l])
     
-    #query with n (top candidates)
-    r = tree.query(m[rt].reshape(1,-1).T, return_distance=False,k=n).flatten() 
-    ru= np.repeat(rt,n)
+    if len(rt): #query with n (top candidates)
+        r = tree.query(m[rt].reshape(1,-1).T, return_distance=False,k=n).flatten() 
+        ru= np.repeat(rt,n)
     
-    ind=np.hstack([l,r])
-    ms,cs,us=ms[ind],cs[ind],np.hstack([lu,ru])
+    ind=np.hstack([l,r]).astype(int)
+    ms,cs,us=ms[ind],cs[ind],np.hstack([lu,ru]).astype(int)
     
 
     res=pd.DataFrame(mass_df.iloc[us,:])
