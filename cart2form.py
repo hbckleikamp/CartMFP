@@ -7,7 +7,6 @@ Created on Tue Jan 21 13:06:16 2025
 
 #%% Modules
 from inspect import getsourcefile
-import time
 import warnings
 
 import sys
@@ -60,7 +59,7 @@ MFP_output_folder = str(Path(basedir, "MFP_Output"))        # default: CartMFP f
 MFP_output_filename=""                                      # default: CartMFP_ + input_filename + .tsv 
 
 
-#% Arguments for execution from command line.
+#%% Arguments for execution from command line.
 
 def parse_path(s):
     raw_s = r'{}'.format(s).replace("\\","/")
@@ -126,9 +125,10 @@ if type(charges)==str: charges=[int(i.strip()) for i in charges.split(",")]
 if type(adducts)==str: adducts=[i.strip("[").strip("]").strip() for i in adducts.strip("[").strip("]").split(",")]
         
 
-#%%
-emass = 0.000548579909  # electron mass
+
+
 # %% Get elemental metadata (or replace with utils table)
+emass = 0.000548579909  # electron mass
 if os.path.exists(mass_table):
     mdf = pd.read_csv(mass_table, index_col=[0], sep="\t")
 else:  # retrieve up to date mass table from nist
@@ -306,7 +306,7 @@ def find_closest(A, target): #returns index of closest array of A within target
     right = A[idx]
     idx -= target - left < right - target
     return idx
-
+#%%
 def predict_formula(
     input_file           = input_file,
     composition_file     = composition_file,
@@ -346,7 +346,6 @@ def predict_formula(
     if not os.path.exists(composition_file):  composition_file=composition_file.replace("[0,","[")
     if not len(mass_index_file):              mass_index_file=composition_file.replace("_comp.npy","_m2g.npy")
     if not len(mass_defect_file):             mass_defect_file=composition_file.replace("_comp.npy","_mass.npy")
-    
     
     if not os.path.exists(composition_file):  raise ValueError("Composition file "+composition_file+" not found!, run space2cart.py")
     if not os.path.exists(mass_index_file):   raise ValueError("Mass index file " +mass_index_file +" not found!, run space2cart.py")
@@ -395,7 +394,6 @@ def predict_formula(
     fedf[["low","high"]]=fedf[["low","high"]].fillna(0).astype(int)
     fedf["mass"]=(mdf.loc[fedf.index]*mass_blowup).astype(np.uint64)
     
-    bmax=max_mass*mass_blowup
     elements=np.array([i.split("]")[-1] for i in fs.split("[")][:-1])
     if len(composition):
     
@@ -420,7 +418,7 @@ def predict_formula(
     Xrdbe = np.argwhere(elements == "C").flatten()
     Yrdbe = np.argwhere(np.in1d(elements,["H", "F", "Cl", "Br", "I"])).flatten()
     Zrdbe = np.argwhere(np.in1d(elements,["N", "P"])).flatten()
-
+    
     #% read input masses 
     
     if   type(input_file)==int or type(input_file)==float:                        masses=[input_file]    #single numeric mass
@@ -608,12 +606,23 @@ def predict_formula(
     
     
     n=min(top_candidates,len(ms))
-    uu=np.unique(us)
-    tree = KDTree(ms.reshape(1,-1).T, leaf_size=200)     
-    ind = tree.query(m[uu].reshape(1,-1).T, return_distance=False,k=n).flatten() 
-    ms,cs,us=ms[ind],cs[ind],np.repeat(np.arange(len(uu)),n)
+    uu,uc=np.unique(us,return_counts=True)
+    q=uc<top_candidates
+    lt,rt=uu[q],uu[~q]
     
-
+    tree = KDTree(ms.reshape(1,-1).T, leaf_size=200)  
+    
+    #query with radius (all candidates)
+    l=tree.query_radius(m[lt].reshape(1,-1).T,r=m[lt]*ppm/1e6)
+    l,lu=np.hstack(l),np.repeat(lt,[len(i) for i in l])
+    
+    #query with n (top candidates)
+    r = tree.query(m[rt].reshape(1,-1).T, return_distance=False,k=n).flatten() 
+    ru= np.repeat(rt,n)
+    
+    ind=np.hstack([l,r])
+    ms,cs,us=ms[ind],cs[ind],np.hstack([lu,ru])
+    
 
     res=pd.DataFrame(mass_df.iloc[us,:])
     if not os.path.exists(mass_defect_file): res["pred_mass"]=ms
@@ -625,7 +634,8 @@ def predict_formula(
                   +cs[:, Zrdbe].sum(axis=1).astype(rdbe_bitlim))/2+1
     res[elements]=cs
     res["index"]=res["index"].astype(int)
-    res=res[res["appm"]<=ppm]
+    
+    if not pre_filter_mass: res=res[res["appm"]<=ppm]
  
     res=map_umass.merge(res,on="index",how="inner") 
     
@@ -672,7 +682,7 @@ def predict_formula(
     
     
     res=res.sort_values(by=["original_index","appm"]).reset_index(drop=True)
-
+#%%
     return res
     
         
