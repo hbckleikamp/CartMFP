@@ -335,7 +335,7 @@ need_batches = len(edf)-mem_cols
 
 # construct output path
 Cartesian_output_file = "".join(edf.index+"["+edf.low.astype(str)+","+edf.high.astype(
-    str)+"]")+"_b"+str(mass_blowup)+"max"+str(int(max_mass))+"rdbe"+str(min_rdbe)+"_"+str(max_rdbe) 
+    str)+"]")+"_b"+str(mass_blowup)+"max"+str(int(max_mass))+"rdbe"+str(float(min_rdbe))+"_"+str(float(max_rdbe)) 
 
 Cartesian_output_file=Cartesian_output_file.replace("[0,","[")
 if not len(Cartesian_output_folder):
