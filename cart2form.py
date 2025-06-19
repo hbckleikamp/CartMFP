@@ -341,6 +341,7 @@ def predict_formula(
 
     
     if not os.path.exists(composition_file):  composition_file=os.path.normpath(composition_file)
+    if not os.path.exists(composition_file):  composition_file=composition_file.replace("[0,","[")
     if not len(mass_index_file):              mass_index_file=composition_file.replace("_comp.npy","_m2g.npy")
     if not len(mass_defect_file):             mass_defect_file=composition_file.replace("_comp.npy","_mass.npy")
     
