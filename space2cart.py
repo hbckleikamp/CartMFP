@@ -331,11 +331,13 @@ else:
 mem_cols = (np.argwhere(np.array(memories) < (maxRam))[-1]+1)[0]
 need_batches = len(edf)-mem_cols
 
+
+
 #%%
 
 # construct output path
 Cartesian_output_file = "".join(edf.index+"["+edf.low.astype(str)+","+edf.high.astype(
-    str)+"]")+"_b"+str(mass_blowup)+"max"+str(int(max_mass))+"rdbe"+str(float(min_rdbe))+"_"+str(float(max_rdbe)) 
+    str)+"]")+"_b"+str(mass_blowup)+"max"+str(int(max_mass))+"rdbe"+str(min_rdbe)+"_"+str(max_rdbe) 
 
 Cartesian_output_file=Cartesian_output_file.replace("[0,","[")
 if not len(Cartesian_output_folder):
@@ -435,13 +437,39 @@ print("")
 
 
 
-
 #%% Write unsorted array
 
 emp = open_memmap(m2g_output_path, mode="w+", shape=(bmax+1*mass_blowup,2),dtype=bits(bmax))
 
 if need_batches:
 
+    
+    #precompute rdbe
+    if flag_rdbe_max or flag_rdbe_min:
+        
+        #base rdbe
+        base_rdbe = np.ones(len(zm), dtype=rdbe_bitlim)*2
+        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=zm[:, Xrdbe].sum(axis=1)*2
+        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1)
+        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1) 
+
+        #batch rdbe
+        batch_rdbeX,batch_rdbeY,batch_rdbeZ=Xrdbe-mem_cols,Yrdbe-mem_cols,Zrdbe-mem_cols
+        batch_rdbeX,batch_rdbeY,batch_rdbeZ=batch_rdbeX[batch_rdbeX>-1],batch_rdbeY[batch_rdbeY>-1],batch_rdbeZ[batch_rdbeZ>-1]
+        batch_rdbe=np.zeros(len(bm),dtype=rdbe_bitlim)
+        if len( batch_rdbeX): batch_rdbe +=bm[:, batch_rdbeX].sum(axis=1)*2
+        if len( batch_rdbeY): batch_rdbe -=bm[:, batch_rdbeY].sum(axis=1)
+        if len( batch_rdbeZ): batch_rdbe +=bm[:, batch_rdbeZ].sum(axis=1)
+        
+        #filter zm and mass on base rdbe
+        q=np.ones(len(mass),bool)
+        if flag_rdbe_min: q=q & ((base_rdbe+batch_rdbe.max())>=min_rdbe)
+        if flag_rdbe_max: q=q & ((base_rdbe-batch_rdbe.min())<=max_rdbe)
+        mass,zm=mass[q],zm[q]
+        
+  
+
+    #Future: also add here chemical ratio filtering
 
     #calculate base mass frequencies
     mc=np.bincount(mass.astype(np.int64))    
@@ -460,22 +488,7 @@ if need_batches:
     czs=np.cumsum(vs*[np.sum(x>am) for x in xs])
     mass_ixs=np.hstack([np.interp(np.linspace(0,czs[-1],partitions+1),czs,xs).astype(int)])[1:-1]
 
-    #precompute rdbe
-    if flag_rdbe_max or flag_rdbe_min:
-        
-        #base rdbe
-        base_rdbe = np.ones(len(zm), dtype=rdbe_bitlim)*2
-        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=zm[:, Xrdbe].sum(axis=1)*2
-        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1)
-        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1) 
 
-        #batch rdbe
-        batch_rdbeX,batch_rdbeY,batch_rdbeZ=Xrdbe-mem_cols,Yrdbe-mem_cols,Zrdbe-mem_cols
-        batch_rdbeX,batch_rdbeY,batch_rdbeZ=batch_rdbeX[batch_rdbeX>-1],batch_rdbeY[batch_rdbeY>-1],batch_rdbeZ[batch_rdbeZ>-1]
-        batch_rdbe=np.zeros(len(bm),dtype=rdbe_bitlim)
-        if len( batch_rdbeX): batch_rdbe +=bm[:, batch_rdbeX].sum(axis=1)*2
-        if len( batch_rdbeY): batch_rdbe -=bm[:, batch_rdbeY].sum(axis=1)
-        if len( batch_rdbeZ): batch_rdbe +=bm[:, batch_rdbeZ].sum(axis=1)
 
 
     test=[]                   #test
@@ -571,7 +584,7 @@ if need_batches:
                 mi[ixs[im]:ixs[im+1]]=(f*mass_blowup).round(0).astype(int)
                 if write_mass: mf[ixs[im]:ixs[im+1]]=f
                 del f
-                
+        
             uc=np.bincount(mi.astype(np.int64)).astype(count_bit)
             emp[:len(uc),1]+=uc
             s=np.argsort(mi,kind="mergesort") #sort
