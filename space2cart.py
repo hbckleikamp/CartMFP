@@ -39,6 +39,11 @@ max_mass = 1000         # default 1000
 min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
 max_rdbe = 80
 
+#advanced chemical rules
+filt_7gr=True            #Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
+filt_LewisSenior=True                                                               #Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence)
+filt_ratios="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]"  #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage
+filt_NOPS=True                                                                      #Golden Rules #6:   Filter on NOPS probabilities
 
 #performance arguments
 maxmem = 10e9 #0.7      # fraction of max free memory usage 
@@ -51,6 +56,7 @@ Cartesian_output_folder = str(Path(basedir, "Cart_Output")) # default: CartMFP f
 
 remove=True #removes unsorted composition file and sorted index file after building sorted array
 debug=False #True
+write_arguments=True #write an output file with arguments used to construct the db
 #%% Arguments for execution from command line.
 
 if not hasattr(sys,'ps1'): #checks if code is executed from command line
@@ -72,6 +78,11 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     parser.add_argument("-min_rdbe",  default=-5,   required = False, help="minimum RDBE of compositions. set False to turn off",type=float)  
     parser.add_argument("-max_rdbe",  default=80,   required = False, help="maximum RBDE of compositions. set False to turn off",type=float)  
 
+    #advanced composition constraints
+    parser.add_argument("-filt_7gr",  default=True,   required = False, help="Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's 7 Golden Rules ")
+    parser.add_argument("-filt_LewisSenior",  default=True,   required = False, help="Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence)")
+    parser.add_argument("-filt_ratios",  default="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]" ,   required = False, help="Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage")  
+    parser.add_argument("-filt_NOPS",  default=True,   required = False, help="Golden Rules #6:   Filter on NOPS probabilities")
 
     #performance arguments
     parser.add_argument("-mem",  default=0.7, required = False, help="if <=1: max fraction of available RAM used, if >1: mass RAM usage in GB",type=float)  
@@ -188,13 +199,6 @@ def create_ranges(a):
     ids[clens[:-1]] = a[1:,0] - a[:-1,1]+1
     return ids.cumsum()
 
-#https://stackoverflow.com/questions/41833740/numpy-index-of-the-maximum-with-reduction-numpy-argmax-reduceat
-def numpy_argmin_reduceat(a,b):
-    n = a.max()+1  # limit-offset
-    grp_count = np.append(b[1:] - b[:-1], a.size - b[-1])
-    shift = n*np.repeat(np.arange(grp_count.size), grp_count)
-    return (a+shift).argsort()[b]
-
 #vectorized find nearest mass
 #https://stackoverflow.com/questions/8914491/finding-the-nearest-value-and-return-the-index-of-array-in-python
 def find_closest(A, target): #returns index of closest array of A within target
@@ -210,48 +214,17 @@ def find_closest(A, target): #returns index of closest array of A within target
 def cm(comps):
  return (np.sum(comps*mdf.loc[edf.index].values.T,axis=1)*mass_blowup).round(0).astype(int)
 
-# %% Get elemental metadata (or replace with utils table)
+# %% Get elemental metadata 
 
 
-if os.path.exists(mass_table):
-    mdf = pd.read_csv(mass_table, index_col=[0], sep="\t")
+if os.path.exists(mass_table): mdf = pd.read_csv(mass_table, index_col=[0], sep="\t")
+else:                         raise ValueError("Mass table "+mass_table+" not found!")
+mdf,vdf=mdf["mass"],mdf["Valence"]-2
 
-else:  # retrieve up to date mass table from nist
-    print("no element mass table found, attempting to retrieve NIST data online.")
-    print("")
-    url = "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl"
-    tables = pd.read_html(url)[0]
+emass = 0.000548579909  # electron mass
+mdf.loc["+"]=-emass
+mdf.loc["-"]=+emass
 
-    # remove fully nan rows and columns
-    tables = tables[~tables.isnull().all(axis=1)]
-    tables = tables[tables.columns[~tables.isnull().all(axis=0)]]
-
-    tables.columns = ["atomic_number", "symbol", "mass_number", 'Relative Atomic Mass',
-                      'Isotopic  Composition', 'Standard Atomic Weight', 'Notes']
-    tables = tables[["atomic_number", "symbol", "mass_number", 'Relative Atomic Mass',
-                     'Isotopic  Composition', 'Standard Atomic Weight']]
-
-    # remove deuterium and tritium trivial names
-    tables.loc[tables["atomic_number"] == 1, "symbol"] = "H"
-    tables = tables[tables['Isotopic  Composition'].notnull()
-                    ].reset_index(drop=True)
-
-    # floatify mass and composition
-    for i in ['Relative Atomic Mass',
-              'Isotopic  Composition', 'Standard Atomic Weight']:
-        tables[i] = tables[i].str.replace(" ", "").str.replace(
-            "(", "").str.replace(")", "").str.replace(u"\xa0", u"")
-    tables[['Relative Atomic Mass', 'Isotopic  Composition']] = tables[[
-        'Relative Atomic Mass', 'Isotopic  Composition']].astype(float)
-    tables['Standard Atomic Weight'] = tables['Standard Atomic Weight'].str.strip(
-        "[]").str.split(",")
-
-    mdf = tables.sort_values(by=["symbol", 'Isotopic  Composition'], ascending=False).groupby(
-        "symbol", sort=False).nth(0)[['symbol', 'Relative Atomic Mass']]
-    mdf = mdf.set_index("symbol")
-    mdf.columns = ["mass"]
-
-    mdf.to_csv("mass_table.tsv", sep="\t")
 
 
 # %% Construct MFP space
@@ -331,6 +304,52 @@ else:
 mem_cols = (np.argwhere(np.array(memories) < (maxRam))[-1]+1)[0]
 need_batches = len(edf)-mem_cols
 
+#%% Parse chemical rules
+
+if not filt_7gr: #turn of 7gr [except for custom filt_ratios]
+    filt_LewisSenior=False
+    filt_nops=False
+    if filt_ratios=="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]": filt_ratios=False
+    
+    
+#parse chemical ratios [Golden rules #4,5]
+erats,batch_rats=[],[]
+if filt_ratios:
+    
+    sf=filt_ratios.replace("]","[").split("[")[:-1]
+    erats=pd.DataFrame([i.split(",") for i in sf[1::2]],columns=["low","high"])  
+    
+    efilts=[]
+    for i in sf[::2]:
+        x=np.argwhere([s.isupper() for s in i])[1][0]
+        efilts.append([i[:x],i[x:]])
+    erats[["l","r"]]=efilts
+    
+    erats=erats[(erats.l.isin(elements)) & (erats.r.isin(elements))]
+    if len(erats):
+        erats["lix"]=[np.argwhere(elements==e)[0,0] for e in erats["l"]]
+        erats["rix"]=[np.argwhere(elements==e)[0,0] for e in erats["r"]]
+    
+        #fill missing values
+        erats=erats.fillna("0")
+        q=erats["high"]==0
+        erats.loc[q,"high"]=edf.iloc[erats.loc[q,"lix"]]["high"].values
+        erats[["low","high"]]=erats[["low","high"]].astype(float)
+    
+#parse NOPS probability [Golden rule #6]
+if filt_NOPS:  #this can be modified with a custom DF if needed
+    nops=pd.DataFrame([ [["N","O","P","S"],	1,	10,	20,	4,	3],
+                        [["N","O","P"],	    3,	11,	22,	6,	0],
+                        [["O","P","S"],	    1,	0,	14,	3,	3],
+                        [["P","S","N"],	    1,	3,	3,	4,	0],
+                        [["N","O","S"],	    6,	19,	14,	0,	8]],
+                      columns=["els","lim","N","O","P","S"])
+    
+    #replace 0 with max counts
+    for e in nops.columns[2:]:
+        if e in elements:
+            nops.loc[nops[e]==0,e]=edf.loc[e,"high"] #fill missing values
+    nops["ixs"]=[np.array([np.argwhere(e==elements)[0][0] for e in i]) for i in nops.els.values]
 
 
 #%%
@@ -338,6 +357,10 @@ need_batches = len(edf)-mem_cols
 # construct output path
 Cartesian_output_file = "".join(edf.index+"["+edf.low.astype(str)+","+edf.high.astype(
     str)+"]")+"_b"+str(mass_blowup)+"max"+str(int(max_mass))+"rdbe"+str(min_rdbe)+"_"+str(max_rdbe) 
+
+if filt_7gr: Cartesian_output_file+="_7gr"
+if filt_ratios!="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]": Cartesian_output_file+="_customfilt"
+
 
 Cartesian_output_file=Cartesian_output_file.replace("[0,","[")
 if not len(Cartesian_output_folder):
@@ -377,7 +400,6 @@ if flag_rdbe_min or flag_rdbe_max:
     Xrdbe = np.argwhere(edf.index == "C").flatten()
     Yrdbe = np.argwhere(edf.index.isin(["H", "F", "Cl", "Br", "I"])).flatten()
     Zrdbe = np.argwhere(edf.index.isin(["N", "P"])).flatten()
-    
     rdbe_bitlim=np.int16
 
 
@@ -435,8 +457,12 @@ if need_batches:
     
 print("")
 
+#filtering:
+
+    
 
 
+    
 #%% Write unsorted array
 
 emp = open_memmap(m2g_output_path, mode="w+", shape=(bmax+1*mass_blowup,2),dtype=bits(bmax))
@@ -461,15 +487,57 @@ if need_batches:
         if len( batch_rdbeY): batch_rdbe -=bm[:, batch_rdbeY].sum(axis=1)
         if len( batch_rdbeZ): batch_rdbe +=bm[:, batch_rdbeZ].sum(axis=1)
         
-        #filter zm and mass on base rdbe
+        #prefilter on base rdbe
         q=np.ones(len(mass),bool)
         if flag_rdbe_min: q=q & ((base_rdbe+batch_rdbe.max())>=min_rdbe)
         if flag_rdbe_max: q=q & ((base_rdbe-batch_rdbe.min())<=max_rdbe)
         mass,zm=mass[q],zm[q]
         
   
+    #precompute dbe (LEWIS & SENIOR rules) [Golden rule #2]
+    if filt_LewisSenior: #integer dbe
+        
+        #do everything x2 -> faster integer calculation
+        base_dbe=np.sum(zm*vdf.loc[elements].values,axis=1)+2
+        batch_dbe=np.sum(bm*vdf.loc[elements[mem_cols:]].values,axis=1)
 
-    #Future: also add here chemical ratio filtering
+        #prefilter on dbe (remove non integer ("odd") dbe
+        if not np.sum(batch_dbe%2): 
+            q=(base_dbe%2)==0
+            mass,zm=mass[q],zm[q]
+    
+    #precompute chemical ratios [Golden rules #4,5]
+    if len(erats):
+        q=(erats["lix"]<mem_cols) &  (erats["rix"]<mem_cols)    
+        base_rats,batch_rats=erats[q],erats[~q]
+        
+        #prefilter on chemical ratios
+        q=np.ones(len(mass),bool)
+        for _,rat in base_rats.iterrows():
+            r=zm[:,rat.lix]/zm[:,rat.rix]
+            q=q & ((~np.isfinite(r)) | ((r>=rat.low) & (r<=rat.high)))
+        mass,zm=mass[q],zm[q]
+            
+    #precompute NOPS probability [Golden rule #6]
+    if filt_NOPS:
+        nops_ixs=np.array([np.argwhere(elements==e)[0][0] for e in nops.columns[2:-1]])
+        nops_vals=nops[nops.columns[2:-1]].values
+        
+        #prefilter on NOPS probabilities
+        q=np.ones(len(mass),bool)
+        for x,row in nops.iterrows():
+            q=q & ((~np.all(zm[:,nops.loc[x,"ixs"]]>row.lim,axis=1)) | (np.all(zm[:,nops_ixs]<row.values[2:-1],axis=1)))  #OR above lim OR 
+            
+        mass,zm=mass[q],zm[q]
+
+    #re-calculate base rdbe and base dbe
+    if flag_rdbe_max or flag_rdbe_min:
+        base_rdbe = np.ones(len(zm), dtype=rdbe_bitlim)*2
+        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=zm[:, Xrdbe].sum(axis=1)*2
+        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1)
+        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1) 
+        
+    if filt_LewisSenior: base_dbe=np.sum(zm*vdf.loc[elements].values,axis=1)+2
 
     #calculate base mass frequencies
     mc=np.bincount(mass.astype(np.int64))    
@@ -488,14 +556,7 @@ if need_batches:
     czs=np.cumsum(vs*[np.sum(x>am) for x in xs])
     mass_ixs=np.hstack([np.interp(np.linspace(0,czs[-1],partitions+1),czs,xs).astype(int)])[1:-1]
 
-
-
-
-    test=[]                   #test
-    zmass_ixs=mass_ixs.copy() #test
-    total_comps=np.int64(0)
-    
-    
+    qtrim=len(zm)
     with ExitStack() as stack:
         files = [stack.enter_context(NpyAppendArray(fname, delete_if_exists=True) ) for fname in memfiles]
 
@@ -503,12 +564,10 @@ if need_batches:
         for ib, b in enumerate(bm):
             print("writing unsorted batch: "+str(ib)+" ( "+str(np.round((ib+1)/batches*100,2))+" %)")
  
-    
             #filter max mass
-            q= (mass<=(bmax-am[ib])) #this is tricky since it doesnt know 
-            if not q[-1]:#truncate mass
-                qtrim=np.argmax(~q)
-                zm,mass,base_rdbe=zm[:qtrim],mass[:qtrim],base_rdbe[:qtrim]
+            q=(mass<=(bmax-am[ib]))
+            if not q[-1]: qtrim=np.argmax(~q) 
+            zm,mas=zm[:qtrim],mass[:qtrim] #truncate mass
             
             zm[:,mem_cols:]=bm[ib]
             
@@ -528,20 +587,38 @@ if need_batches:
                     ixs=np.hstack([0,np.cumsum(ds)])
                     umparts=np.hstack([[0]*np.sum(~q),bs[:,0]+np.array([np.argmax(d[ixs[i]:ixs[i+1]]) for i,_ in enumerate(ixs[:-1])])]).astype(int)
             umparts=np.hstack([0,umparts,len(zm)]).astype(int)
-             
+            
+      
+            ##### chemical filtering #####
+            
+            qr=np.ones(len(zm),bool)
+            
             #rdbe filtering
             if flag_rdbe_max or flag_rdbe_min:
-                brdbe=base_rdbe+batch_rdbe[ib]
-                if flag_rdbe_min & flag_rdbe_max: qr =  (brdbe >= (min_rdbe*2)) & (brdbe <= (max_rdbe*2))
-                elif flag_rdbe_min:               qr =  (brdbe >= (min_rdbe*2))
-                elif flag_rdbe_max:               qr =  (brdbe <= (max_rdbe*2))    
-                
-            # write in partitions
+                brdbe=base_rdbe[:qtrim]+batch_rdbe[ib]
+                if flag_rdbe_min:               qr = qr & (brdbe >= (min_rdbe*2))
+                if flag_rdbe_max:               qr = qr & (brdbe <= (max_rdbe*2))    
+            
+            #dbe filtering
+            if filt_LewisSenior:                qr = qr & ((base_dbe[:qtrim]+batch_dbe[ib])%2==0)
+
+            #chemical ratio filtering
+            if len(batch_rats):
+                for _,rat in batch_rats.iterrows():
+                    r=zm[:,rat.lix]/zm[:,rat.rix]
+                    qr=qr & ((~np.isfinite(r)) | ((r>=rat.low) & (r<=rat.high)))
+                  
+            #NOPS filtering
+            if filt_NOPS:
+                for x,row in nops.iterrows():
+                    qr=qr & ((~np.all(zm[:,nops.loc[x,"ixs"]]>row.lim,axis=1)) | (np.all(zm[:,nops_ixs]<row.values[2:-1],axis=1)))   
+            
+            
+            ##### write in partitions #####
             for p in range(partitions):
                 l,r=umparts[p],umparts[p+1]
                 if r>l:
-                    if flag_rdbe_max or flag_rdbe_min: files[p].append(zm[l:r][qr[l:r]])     
-                    else:                              files[p].append(zm[l:r])  
+                    files[p].append(zm[l:r][qr[l:r]])     
                 else: files[p].close()
                 
             
@@ -637,6 +714,54 @@ if need_batches:
 #%% write index lookup table
         
 if not need_batches:
+    
+    #### Filtering ####
+    
+    
+    #precompute rdbe
+    if flag_rdbe_max or flag_rdbe_min:
+        
+        #base rdbe
+        base_rdbe = np.ones(len(zm), dtype=rdbe_bitlim)*2
+        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=zm[:, Xrdbe].sum(axis=1)*2
+        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1)
+        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1) 
+
+        #prefilter on base rdbe
+        q=np.ones(len(mass),bool)
+        if flag_rdbe_min: q=q & (base_rdbe>=min_rdbe)
+        if flag_rdbe_max: q=q & (base_rdbe<=max_rdbe)
+        mass,zm=mass[q],zm[q]
+        
+  
+    #precompute dbe (LEWIS & SENIOR rules) [Golden rule #2]
+    if filt_LewisSenior: #integer dbe
+        base_dbe=np.sum(zm*vdf.loc[elements].values,axis=1)+2
+        q=(base_dbe%2)==0
+        mass,zm=mass[q],zm[q]
+    
+    #precompute chemical ratios [Golden rules #4,5]
+    if len(erats):
+        q=np.ones(len(mass),bool)
+        for _,rat in erats.iterrows():
+            r=zm[:,rat.lix]/zm[:,rat.rix]
+            q=q & ((~np.isfinite(r)) | ((r>=rat.low) & (r<=rat.high)))
+        mass,zm=mass[q],zm[q]
+            
+    #precompute NOPS probability [Golden rule #6]
+    if filt_NOPS:
+        nops_ixs=np.array([np.argwhere(elements==e)[0][0] for e in nops.columns[2:-1]])
+        nops_vals=nops[nops.columns[2:-1]].values
+        
+        #prefilter on NOPS probabilities
+        q=np.ones(len(mass),bool)
+        for x,row in nops.iterrows():
+            q=q & ((~np.all(zm[:,nops.loc[x,"ixs"]]>row.lim,axis=1)) | (np.all(zm[:,nops_ixs]<row.values[2:-1],axis=1)))  #OR above lim OR 
+        mass,zm=mass[q],zm[q]
+
+    
+    #### write outputs ####
+    
     np.save(comp_output_path, zm)
     emp[:(mass.max()+1).astype(int),1]=np.bincount(mass.astype(np.int64))
 
