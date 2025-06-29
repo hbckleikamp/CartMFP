@@ -21,24 +21,23 @@ This would eqaute to 0-200 Hydrogen, 0-75 Carbon, 0-50 Nitrogen, etc.
 Apart from max element constraints, the elemental composition space is further limited by the maximum mass `max_mass` and ring double bond equivalents (RDBE) `min_rdbe`,`max_rdbe`.
 
 Base chemical constraints:
-|Parameter           | Deaulft value     |       Description|
+|Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
 |composition| "H[200]C[75]N[50]O[50]P[10]S[10]" | composition string describing minimum and maximum element counts|
 |max_mass| 1000 | maximum mass (Da)|
 |min_rdbe | -5 | minimum RDBE |
-|max_rdbe| 80 | maxmimum RDBE |
+|max_rdbe| 80 | maximum RDBE |
 
 
-Advanced chemical constraints are provided by implementing some of Fiehn's 7 Golden rules.
-Which filters unrealistic or impossible compositions.
-This can drastically reduce the size of your composition space.
+Advanced chemical constraints are provided by implementing some of Fiehn's 7 Golden rules, which filters unrealistic or impossible compositions.
+This can drastically reduce the size of your composition space. *Describe the rules* 
 
-|Parameter           | Deaulft value     |       Description|
+|Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
-|composition| "H[200]C[75]N[50]O[50]P[10]S[10]" | composition string describing minimum and maximum element counts|
-|max_mass| 1000 | maximum mass (Da)|
-|min_rdbe | -5 | minimum RDBE |
-|max_rdbe| 80 | maxmimum RDBE |
+|filt_7gr| "H[200]C[75]N[50]O[50]P[10]S[10]" | composition string describing minimum and maximum element counts|
+|filt_LewisSenior| 1000 | maximum mass (Da)|
+|filt_ratios | -5 | minimum RDBE |
+|filt_NOPS| 80 | maximum RDBE |
 
 #advanced chemical rules
 filt_7gr=True                                                                       #Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
