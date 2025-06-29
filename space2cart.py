@@ -25,11 +25,13 @@ from npy_append_array import NpyAppendArray
 from numpy.lib.format import open_memmap
 from contextlib import ExitStack
 
+
 # %% change directory to script directory (should work on windows and mac)
 
 basedir = str(Path(os.path.abspath(getsourcefile(lambda: 0))).parents[0])
 os.chdir(basedir)
 print(os.getcwd())
+base_vars=list(locals().copy().keys()) #base variables
 
 # %% Arguments
 
@@ -40,7 +42,7 @@ min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depe
 max_rdbe = 80
 
 #advanced chemical rules
-filt_7gr=True            #Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
+filt_7gr=True                                                                       #Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
 filt_LewisSenior=True                                                               #Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence)
 filt_ratios="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]"  #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage
 filt_NOPS=True                                                                      #Golden Rules #6:   Filter on NOPS probabilities
@@ -53,10 +55,17 @@ write_mass=True                   # also writes float array of masses
 #filepaths
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
 Cartesian_output_folder = str(Path(basedir, "Cart_Output")) # default: CartMFP folder / Cart_Output
+Cartesian_output_file=""  
 
+write_params=True #write an output file with arguments used to construct the db
 remove=True #removes unsorted composition file and sorted index file after building sorted array
 debug=False #True
-write_arguments=True #write an output file with arguments used to construct the db
+
+#%% store parameters
+params={}
+[params.update({k:v}) for k,v in locals().copy().items() if k not in base_vars and k[0]!="_" and k not in ["base_vars","params"]]
+
+
 #%% Arguments for execution from command line.
 
 if not hasattr(sys,'ps1'): #checks if code is executed from command line
@@ -68,9 +77,10 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
                         description='molecular formula prediction, see: https://github.com/hbckleikamp/CartMFP')
     
     #output and utility filepaths
-    parser.add_argument("-mass_table",                 default=str(Path(basedir, "mass_table.tsv")), required = False, help="list of element masses")  
-    parser.add_argument("-cart_out", "--Cart_Output",  default=str(Path(basedir, "Cart_Output")), required = False, help="Output folder for cartesian files")   
-
+    parser.add_argument("-mass_table",                             default=str(Path(basedir, "mass_table.tsv")), required = False, help="list of element masses")  
+    parser.add_argument("-folder_name", "--Cartesian_output_folder",  default=str(Path(basedir, "Cart_Output")),   required = False, help="Output folder for cartesian files")   
+    parser.add_argument("-file_name",   "--Cartesian_output_file",   default="", required = False, help="Output file name for cartesian files")   
+   
     #composition constraints
     parser.add_argument("-c", "--composition", default="H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]", 
     required = False, help="ALlowed elements and their minimum and maximum count. The following syntax is used: Element_name[minimum_count,maximum_count]")  
@@ -89,20 +99,19 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     parser.add_argument("-mass_blowup",  default=100000, required = False, help="multiplication factor to make masses integer. Larger values increase RAM usage but reduce round-off errors",type=int)  
     parser.add_argument("-write_mass",  default=True, required = False, help="Also create a lookup table for float masses",type=int)  
         
-    
+    #write params
+    parser.add_argument("-write_params",  default=True, required = False, help="writes parameter file")  
     parser.add_argument("-remove",  default=True, required = False, help="removes unsorted composition file and sorted index file after building sorted array")  
     parser.add_argument("-d","--debug",  default=False, required = False, help="")  
     
 
     args = parser.parse_args()
-    args = {k:v for k,v in vars(parser.parse_args()).items() if v is not None}
+    params = {k:v for k,v in vars(parser.parse_args()).items() if v is not None}
     
     print("")
     print(args) 
     print("")
-    locals().update(args)
-
-
+    locals().update(params)
 
 # %% General functions
 
@@ -337,6 +346,7 @@ if filt_ratios:
         erats[["low","high"]]=erats[["low","high"]].astype(float)
     
 #parse NOPS probability [Golden rule #6]
+nops=[]
 if filt_NOPS:  #this can be modified with a custom DF if needed
     nops=pd.DataFrame([ [["N","O","P","S"],	1,	10,	20,	4,	3],
                         [["N","O","P"],	    3,	11,	22,	6,	0],
@@ -345,44 +355,45 @@ if filt_NOPS:  #this can be modified with a custom DF if needed
                         [["N","O","S"],	    6,	19,	14,	0,	8]],
                       columns=["els","lim","N","O","P","S"])
     
-    #replace 0 with max counts
-    for e in nops.columns[2:]:
-        if e in elements:
-            nops.loc[nops[e]==0,e]=edf.loc[e,"high"] #fill missing values
-    nops["ixs"]=[np.array([np.argwhere(e==elements)[0][0] for e in i]) for i in nops.els.values]
+    #remove rows that are not in elements
+    nops=nops[[np.all(np.in1d(np.array(i),elements)) for i in nops.els]]
+    
+    if len(nops):
+        #replace 0 with max counts
+        for e in nops.columns[2:]:
+            if e in elements: nops.loc[nops[e]==0,e]=edf.loc[e,"high"] #fill missing values
+            else:             nops.pop(e)
+        nops["ixs"]=[np.array([np.argwhere(e==elements)[0][0] for e in i]) for i in nops.els.values]
 
 
-#%%
+#%% construct output paths
 
-# construct output path
-Cartesian_output_file = "".join(edf.index+"["+edf.low.astype(str)+","+edf.high.astype(
-    str)+"]")+"_b"+str(mass_blowup)+"max"+str(int(max_mass))+"rdbe"+str(min_rdbe)+"_"+str(max_rdbe) 
+if Cartesian_output_file=="":
+    Cartesian_output_file = "".join(edf.index+"["+edf.low.astype(str)+","+edf.high.astype(
+        str)+"]")+"_b"+str(mass_blowup)+"max"+str(int(max_mass))+"rdbe"+str(min_rdbe)+"_"+str(max_rdbe) 
+    if filt_7gr: Cartesian_output_file+="_7gr"
+    if filt_ratios!="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]": Cartesian_output_file+="_customfilt"
+    Cartesian_output_file=Cartesian_output_file.replace("[0,","[")
+else: 
+    write_params=True
 
-if filt_7gr: Cartesian_output_file+="_7gr"
-if filt_ratios!="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]": Cartesian_output_file+="_customfilt"
 
-
-Cartesian_output_file=Cartesian_output_file.replace("[0,","[")
 if not len(Cartesian_output_folder):
     Cartesian_output_folder = os.getcwd()
 else:
     if not os.path.exists(Cartesian_output_folder):
         os.makedirs(Cartesian_output_folder)
 
-unsorted_comp_output_path = str(
-    Path(Cartesian_output_folder, Cartesian_output_file))+"_unsorted_comp.npy"
+basepath=str( Path(Cartesian_output_folder, Cartesian_output_file))
+unsorted_comp_output_path =basepath+"_unsorted_comp.npy"
+mass_output_path =         basepath+"_mass.npy"
+comp_output_path =         basepath+"_comp.npy"
+m2g_output_path  =         basepath+"_m2g.npy"
 
-mass_output_path = str(
-    Path(Cartesian_output_folder, Cartesian_output_file))+"_mass.npy"
-
-comp_output_path = str(
-    Path(Cartesian_output_folder, Cartesian_output_file))+"_comp.npy"
-
-m2g_output_path = str(
-    Path(Cartesian_output_folder, Cartesian_output_file))+"_m2g.npy"
-
-
-
+if write_params: 
+    import json
+    with open(basepath+".params", 'w') as f:
+        json.dump(params, f)
 
 print("Output Cartesian file:")
 print(Cartesian_output_file)
@@ -519,7 +530,7 @@ if need_batches:
         mass,zm=mass[q],zm[q]
             
     #precompute NOPS probability [Golden rule #6]
-    if filt_NOPS:
+    if len(nops):
         nops_ixs=np.array([np.argwhere(elements==e)[0][0] for e in nops.columns[2:-1]])
         nops_vals=nops[nops.columns[2:-1]].values
         
@@ -609,7 +620,7 @@ if need_batches:
                     qr=qr & ((~np.isfinite(r)) | ((r>=rat.low) & (r<=rat.high)))
                   
             #NOPS filtering
-            if filt_NOPS:
+            if len(nops):
                 for x,row in nops.iterrows():
                     qr=qr & ((~np.all(zm[:,nops.loc[x,"ixs"]]>row.lim,axis=1)) | (np.all(zm[:,nops_ixs]<row.values[2:-1],axis=1)))   
             
