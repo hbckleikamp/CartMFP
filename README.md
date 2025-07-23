@@ -69,7 +69,7 @@ To run cart2form, an input mass list has to be supplied, which can be linked to 
 The file either has to have a single column, or a column titled  "Mz" or "Mass".
 Alternatively cart2form can be imported as a module within a script, and executed on a float mass or iterable set of masses with the function `predict_formula(input_file,composition_file)`.
 
-# required inputs 
+#### required inputs 
 |Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
 |-input_file       | "test_mass_CASMI2022.txt"| path to list of masses|
@@ -88,9 +88,10 @@ Other key arguments include the ppm tolerance of the mass error of returned comp
 |-top_candidates | 20 |maxmimum number of compositions returned per mass|
 
 
-Contstruct database with halogens:
+# Example use 
+Molecular formula prediction from command line:
 ``` 
-python "space2cart.py" -input_file "test_mass_CASMI2022.txt" -composition_file "H[200]C[75]N[50]O[50]P[10]S[10]_b100000max1000rdbe-5_80_7gr_comp.npy"
+python "cart2form.py" -input_file "test_mass_CASMI2022.txt" -composition_file "H[200]C[75]N[50]O[50]P[10]S[10]_b100000max1000rdbe-5_80_7gr_comp.npy"
 ```
 Alternatively cart2form.py can be imported.
 ``` 
