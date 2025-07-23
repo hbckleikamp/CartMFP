@@ -43,7 +43,7 @@ Additional arguments can be supplied to affect the performance and output paths:
 
 |Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
-|-maxmem | 10e9 |  Amount of memory used in GB |
+|-maxmem | 10e9 |  Amount of memory used in bytes |
 |-mass_blowup | 100000 |blowup factor to convert float masses to integers|
 |-write_mass  | True | construct a mass lookup table (faster mfp but more storage memory)|
 |-Cartesian_output_folder | "Cart_Output" | Path to output folder |
