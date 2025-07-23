@@ -10,7 +10,7 @@ CartMFP consists of two steps.
 2. Molecular formula prediction *cart2form.py* : Molecular formulas that are predicted based on input masses. <br> <br>
 
 
-#### 1. Constructing a database
+# 1. Constructing a database
 
 A database is constructed by enumerating all combinations of elements within a certain range.
 The compositional space is described with a specific syntax: Element[min,max].
@@ -62,7 +62,7 @@ python "space2cart.py" -composition "H[200]C[75]N[50]O[50]P[10]S[10]F[5]Cl[5]I[3
 ```
 space2cart can also be executed by running the script in an IDE, such as Spyder.
 
-#### 2. Molecular formula prediction
+# 2. Molecular formula prediction
 
 After the composition database has been constructed with `space2cart.py` , molecular formula prediction can be done using `cart2form.py`.
 To run cart2form, an input mass list has to be supplied, which can be linked to a file in txt or any tabular format.
