@@ -780,13 +780,4 @@ nz=np.argwhere(emp[:,1])[:,0]
 emp[nz,0]=np.cumsum(emp[nz,1])-emp[nz,1]
 emp.flush()
 
-#%% test
 
-
-# m=np.load(mass_output_path)
-# comps=np.load(comp_output_path)
-# abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
-
-# comps = np.load(comp_output_path, mmap_mode="r")
-# m = np.load(mass_output_path, mmap_mode="r") #test
-# abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
