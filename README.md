@@ -78,7 +78,7 @@ Alternatively cart2form can be imported as a module within a script, and execute
 
 Optional arguments can supplied to tune which massses will be returned, this includes
 the polariy, which adducts to consider, which charge states to consider.
-Other key arguments include the ppm tolerance of the mass error of returned composition, and the maximum number of compositions returned per mass.  Adducts use the following syntax: sign(+/-) elemental composiiton charge(+/-)
+Other key arguments include the ppm tolerance of the mass error of returned composition, and the maximum number of compositions returned per mass.  Adducts use the following syntax: "sign(+ addition of /- loss of) elemental composition charge(+/-)"
 |Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
 |-mode | "pos"                     | ionization mode. Options: " ", "positive", "negative"|
