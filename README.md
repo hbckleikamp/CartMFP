@@ -23,10 +23,10 @@ Apart from max element constraints, the elemental composition space is further l
 Base chemical constraints:
 |Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
-|composition| "H[200]C[75]N[50]O[50]P[10]S[10]" | composition string describing minimum and maximum element counts|
-|max_mass| 1000 | maximum mass (Da)|
-|min_rdbe | -5 | minimum RDBE |
-|max_rdbe| 80 | maximum RDBE |
+|-composition| "H[200]C[75]N[50]O[50]P[10]S[10]" | composition string describing minimum and maximum element counts|
+|-max_mass| 1000 | maximum mass (Da)|
+|-min_rdbe | -5 | minimum RDBE |
+|-max_rdbe| 80 | maximum RDBE |
 
 
 Additional chemical constraints are provided by implementing some of Fiehn's 7 Golden rules, which filters unrealistic or impossible compositions.
@@ -34,61 +34,62 @@ This can drastically reduce the size of your composition space. These include:  
 
 |Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
-|filt_7gr| True | Toggle global to apply or remove 7 golden rules filtering|
-|filt_LewisSenior| True | Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence) |
-|filt_ratios | "HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]" | #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage |
-|filt_NOPS| True    | #6 – element probability check. |
+|-filt_7gr| True | Toggle global to apply or remove 7 golden rules filtering|
+|-filt_LewisSenior| True | Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence) |
+|-filt_ratios | "HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]" | #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage |
+|-filt_NOPS| True    | #6 – element probability check. |
 
 |Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
-|maxmem | 10e9 |  Amount of memory used in GB |
-|mass_blowup | 100000 |blowup factor to convert float masses to integers|
-|write_mass  | True | construct a mass lookup table (faster mfp but more storage memory)|
-|Cartesian_output_folder | "Cart_Output" | Path to output folder |
-|Cartesian_output_file   |<based on parameters> | Output database name |
+|-maxmem | 10e9 |  Amount of memory used in GB |
+|-mass_blowup | 100000 |blowup factor to convert float masses to integers|
+|-write_mass  | True | construct a mass lookup table (faster mfp but more storage memory)|
+|-Cartesian_output_folder | "Cart_Output" | Path to output folder |
+|-Cartesian_output_file   |<depends on parameters> | Output database name |
 
-#Examples
+# Examples
 
-``` (Contstruct default database)
+Contstruct default database:
+``` 
 python "space2cart.py" 
+```
+
+Contstruct database with halogens:
+``` 
+python "space2cart.py" -composition "H[200]C[75]N[50]O[50]P[10]S[10]F[5]Cl[5]I[3]Br[3]"
 ```
 
 #### 2. Molecular formula prediction
 
+After the composition database has been constructed with `space2cart.py` , molecular formula prediction can be done using `cart2form.py`.
+To run cart2form, an input mass list has to be supplied, which can be linked to a file in txt or any tabular format.
+Alternatively cart2form can be imported as a module within a script, and executed on a float mass or iterable set of masses with the function `predict_formula(input_file,composition_file)`.
+
+# required inputs 
+|Parameter           | Default value     |       Description|
+|-input_file | "test_mass_CASMI2022.txt"| default: CASMI 2022 masses in CartMFP folder default|
+|-composition_file | "H[200]C[75]N[50]O[50]P[10]S[10]_b100000max1000rdbe-5_80_7gr_comp.npy"| path to the database composition file|
+                           
+
+Optional arguments can be tuned 
+Which adducts to consider, which charge states to consider, 
+Adducts use the following syntax: sign(+/-) elemental composiiton charge(+/-)
+|Parameter           | Default value     |       Description|
+
+mode = "pos"                     # ionization mode. Options: " ", "positive", "negative" # positive substracts electron mass, negative adds electron mass, "" doesn't add anything
+adducts =["+H+","+Na+","+K",      # default positive adducts "--","+H+","+Na+","+K"
+         "+-","+Cl-","-H+"]            # default negative adducts "+-","-H+","+Cl-" 
+charges=[1]                            # default: [1]
+
+ppm = 100 #5                 # ppm for formula prediction
+top_candidates = 20     # only save the best predictions sorted by ppm (default 20)
 
 
-#### Installation
-
-#pip
-
-#### What outputs does it generate? 
-
-NovoLign generates several output files divided over different folders.
-|Folder           | Section     |       Contents|
-|-----------------|:-----------:|---------------|
-|diamond_fasta| 1 | generated fasta file from input peptide sequences file for DIAMOND alignment|
-|diamond_alignments| 1 | DIAMOND alignment|
-|lca| 2 | different LCA outputs: conventional (CON) weighted (W), bitscore weighted (BIT) |
-|composition| 3 | taxonomic composition of input sample (for different LCAs) including level of decoy matches|
-|experiment_qc| 4 | comparison of spectral annotation rates of input sample by NovoLign and database searching, for spectra at different quality levels|
-|database_qc| 5 | comparison of taxonomic composition of input sample obtained by NovoLign to taxonomic composition obtained by database searching |
-|psms| 5 | Final PSMs format output with NovoLign annotation |
-
-<br>
-
-
-### Execute CartMFP from command line ###
-
-
-Basic usage 
+Contstruct database with halogens:
+``` 
+python "space2cart.py" -composition "H[200]C[75]N[50]O[50]P[10]S[10]F[5]Cl[5]I[3]Br[3]"
 ```
-python "mass2form.py" -i "test_mass_CASMI2022.txt"
-```
-
-With database custom element space (default= "H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]" ):
-```
-python "mass2form.py" -i "test_mass_CASMI2022.txt" -c "H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]"
-```
+Alternatively cart2form.py can be imported
 
 #### Licensing
 
