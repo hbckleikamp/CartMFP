@@ -46,7 +46,7 @@ charges=[1]                            # default: [1]
 
 
 #performance arguments
-ppm = 100 #5                 # ppm for formula prediction
+ppm = 5                 # ppm for formula prediction
 top_candidates = 20     # only save the best predictions sorted by ppm (default 20)
 pre_filter_mass= True   # prefilter masses based top candidates counts
 filter_rdbe=False       # postfilter compositions based on rdbe
