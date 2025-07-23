@@ -45,7 +45,7 @@ This can drastically reduce the size of your composition space. These include:  
 |mass_blowup | 100000 |blowup factor to convert float masses to integers|
 |write_mass  | True | construct a mass lookup table (faster mfp but more storage memory)|
 |Cartesian_output_folder | "Cart_Output" | Path to output folder |
-|Cartesian_output_file   | | Output_filename |
+|Cartesian_output_file   |<based on parameters> | Output database name |
 
 #Examples
 
