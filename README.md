@@ -39,6 +39,8 @@ This can drastically reduce the size of your composition space. These include:  
 |-filt_ratios | "HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]" | #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage |
 |-filt_NOPS| True    | #6 – element probability check. |
 
+Additional arguments can be supplied to affect the performance and output paths: 
+
 |Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
 |-maxmem | 10e9 |  Amount of memory used in GB |
@@ -47,7 +49,7 @@ This can drastically reduce the size of your composition space. These include:  
 |-Cartesian_output_folder | "Cart_Output" | Path to output folder |
 |-Cartesian_output_file   |<depends on parameters> | Output database name |
 
-# Examples
+# Example use (In command line)
 
 Contstruct default database:
 ``` 
@@ -58,31 +60,34 @@ Contstruct database with halogens:
 ``` 
 python "space2cart.py" -composition "H[200]C[75]N[50]O[50]P[10]S[10]F[5]Cl[5]I[3]Br[3]"
 ```
+space2cart can also be executed by running the script in an IDE, such as Spyder.
 
 #### 2. Molecular formula prediction
 
 After the composition database has been constructed with `space2cart.py` , molecular formula prediction can be done using `cart2form.py`.
 To run cart2form, an input mass list has to be supplied, which can be linked to a file in txt or any tabular format.
+The file either has to have a single column, or a column titled  "Mz" or "Mass".
 Alternatively cart2form can be imported as a module within a script, and executed on a float mass or iterable set of masses with the function `predict_formula(input_file,composition_file)`.
 
 # required inputs 
 |Parameter           | Default value     |       Description|
-|-input_file | "test_mass_CASMI2022.txt"| default: CASMI 2022 masses in CartMFP folder default|
+|-----------------|:-----------:|---------------|
+|-input_file | "test_mass_CASMI2022.txt"| path to list of masses|
 |-composition_file | "H[200]C[75]N[50]O[50]P[10]S[10]_b100000max1000rdbe-5_80_7gr_comp.npy"| path to the database composition file|
                            
 
-Optional arguments can be tuned 
-Which adducts to consider, which charge states to consider, 
+Optional arguments can supplied to tune which massses will be returned, this includes
+the polariy, which adducts to consider, which charge states to consider.
+Other key arguments include the ppm tolerance of the mass error of returned composition, and the maximum number of compositions returned per mass. 
+
 Adducts use the following syntax: sign(+/-) elemental composiiton charge(+/-)
 |Parameter           | Default value     |       Description|
-
-mode = "pos"                     # ionization mode. Options: " ", "positive", "negative" # positive substracts electron mass, negative adds electron mass, "" doesn't add anything
-adducts =["+H+","+Na+","+K",      # default positive adducts "--","+H+","+Na+","+K"
-         "+-","+Cl-","-H+"]            # default negative adducts "+-","-H+","+Cl-" 
-charges=[1]                            # default: [1]
-
-ppm = 100 #5                 # ppm for formula prediction
-top_candidates = 20     # only save the best predictions sorted by ppm (default 20)
+|-----------------|:-----------:|---------------|
+|mode | "pos"                     | ionization mode. Options: " ", "positive", "negative"|
+|adducts|["+H+","+Na+","+K",   "+-","+Cl-","-H+"]       | default positive adducts "--","+H+","+Na+","+K", default negative adducts "+-","-H+","+Cl-" |
+|charges|[1]                         |Charge states to consider|
+|ppm| 5| maximum mass error (ppm) of predicted compositions |
+|top_candidates | 20 |maxmimum number of compositions returned per mass|
 
 
 Contstruct database with halogens:
