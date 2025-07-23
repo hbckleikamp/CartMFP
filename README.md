@@ -7,7 +7,7 @@ CartMFP or Cartesian molecular formula prediction, is a python tool that can per
 
 CartMFP consists of two steps.
 1. Constructing a database *space2cart.py* : A local database is constructed. <br>
-2. Molecular formula precition *cart2form.py* : Molecular formulas that are predicted based on input masses. <br> <br>
+2. Molecular formula prediction *cart2form.py* : Molecular formulas that are predicted based on input masses. <br> <br>
 
 
 #### 1. Constructing a database
