@@ -29,7 +29,7 @@ Base chemical constraints:
 |max_rdbe| 80 | maximum RDBE |
 
 
-Advanced chemical constraints are provided by implementing some of Fiehn's 7 Golden rules, which filters unrealistic or impossible compositions.
+Additional chemical constraints are provided by implementing some of Fiehn's 7 Golden rules, which filters unrealistic or impossible compositions.
 This can drastically reduce the size of your composition space. These include:  Rule #2 – LEWIS and SENIOR check; Rule #4 – Hydrogen/Carbon element ratio check; Rule #5 heteroatom ratio check and Rule #6 – element probability check.
 
 |Parameter           | Default value     |       Description|
@@ -39,10 +39,21 @@ This can drastically reduce the size of your composition space. These include:  
 |filt_ratios | "HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]" | #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage |
 |filt_NOPS| True    | #6 – element probability check. |
 
+|Parameter           | Default value     |       Description|
+|-----------------|:-----------:|---------------|
+|maxmem | 10e9 |  Amount of memory used in GB |
+|mass_blowup | 100000 |blowup factor to convert float masses to integers|
+|write_mass  | True | construct a mass lookup table (faster mfp but more storage memory)|
+|Cartesian_output_folder | "Cart_Output" | Path to output folder |
+|Cartesian_output_file   | | Output_filename |
 
+#Examples
 
+``` (Contstruct default database)
+python "space2cart.py" 
+```
 
-parameters:
+#### 2. Molecular formula prediction
 
 
 
