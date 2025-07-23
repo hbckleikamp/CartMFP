@@ -45,7 +45,7 @@ Additional arguments can be supplied to affect the performance and output paths:
 |-----------------|:-----------:|---------------|
 |-maxmem | 10e9 |  Amount of memory used in bytes |
 |-mass_blowup | 100000 |blowup factor to convert float masses to integers|
-|-write_mass  | True | construct a mass lookup table (faster mfp but more storage memory)|
+|-write_mass  | True | construct a mass lookup table (faster MFP but larger database)|
 |-Cartesian_output_folder | "Cart_Output" | Path to output folder |
 |-Cartesian_output_file   |<depends on parameters> | Output database name |
 
