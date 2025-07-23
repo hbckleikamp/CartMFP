@@ -257,7 +257,7 @@ edf["arr"] = edf.apply(lambda x: np.arange(
     x.loc["low"], x.loc["high"]+1), axis=1)
 edf["mass"] = (mdf.loc[edf.index]*mass_blowup).astype(np.uint64)
 elements=edf.index.values
-
+params["elements"]=elements.tolist()
 
 bitlim=np.uint8
 if edf.high.max()>255: 
@@ -319,7 +319,8 @@ if not filt_7gr: #turn of 7gr [except for custom filt_ratios]
     filt_LewisSenior=False
     filt_nops=False
     if filt_ratios=="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]": filt_ratios=False
-    
+
+if not "[" in filt_ratios: filt_ratios=False
     
 #parse chemical ratios [Golden rules #4,5]
 erats,batch_rats=[],[]
@@ -468,12 +469,8 @@ if need_batches:
     
 print("")
 
-#filtering:
-
-    
 
 
-    
 #%% Write unsorted array
 
 emp = open_memmap(m2g_output_path, mode="w+", shape=(bmax+1*mass_blowup,2),dtype=bits(bmax))
@@ -516,7 +513,7 @@ if need_batches:
         if not np.sum(batch_dbe%2): 
             q=(base_dbe%2)==0
             mass,zm=mass[q],zm[q]
-    
+            
     #precompute chemical ratios [Golden rules #4,5]
     if len(erats):
         q=(erats["lix"]<mem_cols) &  (erats["rix"]<mem_cols)    
@@ -531,8 +528,8 @@ if need_batches:
             
     #precompute NOPS probability [Golden rule #6]
     if len(nops):
-        nops_ixs=np.array([np.argwhere(elements==e)[0][0] for e in nops.columns[2:-1]])
-        nops_vals=nops[nops.columns[2:-1]].values
+        nops_ixs=np.hstack([np.argwhere(elements==e).flatten() for e in nops.columns[2:]])
+        nops_vals=nops[nops.columns[2:]].values
         
         #prefilter on NOPS probabilities
         q=np.ones(len(mass),bool)
@@ -717,7 +714,9 @@ if need_batches:
             emp.flush()
             emp._mmap.close()
             emp = open_memmap(m2g_output_path, mode="r+")
-    
+            
+        fc.close()
+        fm.close()
     
 
 
@@ -747,7 +746,7 @@ if not need_batches:
   
     #precompute dbe (LEWIS & SENIOR rules) [Golden rule #2]
     if filt_LewisSenior: #integer dbe
-        base_dbe=np.sum(zm*vdf.loc[elements].values,axis=1)+2
+        base_dbe=np.sum(zm*vdf.loc[elements].values,axis=1)+2 #why +2 isnt that meaningless?
         q=(base_dbe%2)==0
         mass,zm=mass[q],zm[q]
     
@@ -761,8 +760,8 @@ if not need_batches:
             
     #precompute NOPS probability [Golden rule #6]
     if filt_NOPS:
-        nops_ixs=np.array([np.argwhere(elements==e)[0][0] for e in nops.columns[2:-1]])
-        nops_vals=nops[nops.columns[2:-1]].values
+        nops_ixs=np.hstack([np.argwhere(elements==e).flatten() for e in nops.columns[2:]])
+        nops_vals=nops[nops.columns[2:]].values
         
         #prefilter on NOPS probabilities
         q=np.ones(len(mass),bool)
@@ -781,4 +780,13 @@ nz=np.argwhere(emp[:,1])[:,0]
 emp[nz,0]=np.cumsum(emp[nz,1])-emp[nz,1]
 emp.flush()
 
+#%% test
 
+
+# m=np.load(mass_output_path)
+# comps=np.load(comp_output_path)
+# abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
+
+# comps = np.load(comp_output_path, mmap_mode="r")
+# m = np.load(mass_output_path, mmap_mode="r") #test
+# abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
