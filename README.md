@@ -72,29 +72,33 @@ Alternatively cart2form can be imported as a module within a script, and execute
 # required inputs 
 |Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
-|-input_file | "test_mass_CASMI2022.txt"| path to list of masses|
+|-input_file       | "test_mass_CASMI2022.txt"| path to list of masses|
 |-composition_file | "H[200]C[75]N[50]O[50]P[10]S[10]_b100000max1000rdbe-5_80_7gr_comp.npy"| path to the database composition file|
                            
 
 Optional arguments can supplied to tune which massses will be returned, this includes
 the polariy, which adducts to consider, which charge states to consider.
-Other key arguments include the ppm tolerance of the mass error of returned composition, and the maximum number of compositions returned per mass. 
-
-Adducts use the following syntax: sign(+/-) elemental composiiton charge(+/-)
+Other key arguments include the ppm tolerance of the mass error of returned composition, and the maximum number of compositions returned per mass.  Adducts use the following syntax: sign(+/-) elemental composiiton charge(+/-)
 |Parameter           | Default value     |       Description|
 |-----------------|:-----------:|---------------|
-|mode | "pos"                     | ionization mode. Options: " ", "positive", "negative"|
-|adducts|["+H+","+Na+","+K",   "+-","+Cl-","-H+"]       | default positive adducts "--","+H+","+Na+","+K", default negative adducts "+-","-H+","+Cl-" |
-|charges|[1]                         |Charge states to consider|
-|ppm| 5| maximum mass error (ppm) of predicted compositions |
-|top_candidates | 20 |maxmimum number of compositions returned per mass|
+|-mode | "pos"                     | ionization mode. Options: " ", "positive", "negative"|
+|-adducts|["+H+","+Na+","+K",   "+-","+Cl-","-H+"]       | default positive adducts "--","+H+","+Na+","+K", default negative adducts "+-","-H+","+Cl-" |
+|-charges|[1]                         |Charge states to consider|
+|-ppm| 5| maximum mass error (ppm) of predicted compositions |
+|-top_candidates | 20 |maxmimum number of compositions returned per mass|
 
 
 Contstruct database with halogens:
 ``` 
-python "space2cart.py" -composition "H[200]C[75]N[50]O[50]P[10]S[10]F[5]Cl[5]I[3]Br[3]"
+python "space2cart.py" -input_file "test_mass_CASMI2022.txt" -composition_file "H[200]C[75]N[50]O[50]P[10]S[10]_b100000max1000rdbe-5_80_7gr_comp.npy"
 ```
-Alternatively cart2form.py can be imported
+Alternatively cart2form.py can be imported.
+``` 
+import cart2form
+cart2form.predict_formula(input_file=124.56 ,   #float mass or iterable (array/list/DataFrame)
+                          composition_file="H[200]C[75]N[50]O[50]P[10]S[10]_b100000max1000rdbe-5_80_7gr_comp.npy")
+```
+
 
 #### Licensing
 
