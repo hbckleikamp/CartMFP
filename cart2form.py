@@ -439,7 +439,7 @@ def predict_formula(
   
     if len(adducts):
         adduct_sign    =[-1  if a[0]=="-" else  1  for a in adducts]
-        adduct_mass=pd.concat([getMz(a[1:]) for a in adducts]).values
+        adduct_mass=[getMz(a[1:]) for a in adducts]
         
         adf=pd.DataFrame([adducts,adduct_mass]).T
         adf.columns=["adduct","adduct_mass"]
