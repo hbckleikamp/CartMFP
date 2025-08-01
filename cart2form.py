@@ -46,7 +46,7 @@ charges=[1]                            # default: [1]
 
 
 #performance arguments
-ppm = 5                 # ppm for formula prediction
+ppm = 100 #5                 # ppm for formula prediction
 top_candidates = 20     # only save the best predictions sorted by ppm (default 20)
 pre_filter_mass= True   # prefilter masses based top candidates counts
 filter_rdbe=False       # postfilter compositions based on rdbe
@@ -306,10 +306,10 @@ def predict_formula(
 
 
     #%% Check filepaths
-
     
     if not os.path.exists(composition_file):  composition_file=os.path.normpath(composition_file)
-    if not os.path.exists(composition_file):  composition_file=composition_file.replace("[0,","[")
+    if not os.path.exists(composition_file):  composition_file=composition_file.replace("[0,","[") #min element counts 
+    if not os.path.exists(composition_file):  composition_file=composition_file.replace(".0,","")  #float and int
     if not len(mass_index_file):              mass_index_file=composition_file.replace("_comp.npy","_m2g.npy")
     if not len(mass_defect_file):             mass_defect_file=composition_file.replace("_comp.npy","_mass.npy")
     if use_params:                            params_file=composition_file.replace("_comp.npy",".params")
@@ -319,7 +319,6 @@ def predict_formula(
     if not os.path.exists(mass_defect_file):  warnings.warn("Mass defect file " +mass_defect_file +" not found!, run space2cart with write_mass=True for better performance")
     
 
-    
     #%% Parse information from composition output
     print("")
     if os.path.exists(params_file) and use_params:
@@ -402,6 +401,7 @@ def predict_formula(
     print("")
     if   type(input_file)==int or type(input_file)==float:                        masses=[input_file]    #single numeric mass
     elif isinstance(input_file,pd.Series) or isinstance(input_file,pd.DataFrame): masses=input_file      #when used as function
+    elif isinstance(input_file,np.ndarray):                                       masses=input_file.flatten()
     elif type(input_file)==str: #str -> filepath  
         print("Reading table: "+str(input_file))
         print("")
@@ -439,7 +439,7 @@ def predict_formula(
   
     if len(adducts):
         adduct_sign    =[-1  if a[0]=="-" else  1  for a in adducts]
-        adduct_mass=[getMz(a[1:]) for a in adducts]
+        adduct_mass=pd.concat([getMz(a[1:]) for a in adducts]).values
         
         adf=pd.DataFrame([adducts,adduct_mass]).T
         adf.columns=["adduct","adduct_mass"]
@@ -454,6 +454,7 @@ def predict_formula(
         print("adducts used: "+", ".join([i+" ("+str(adduct_mass[ix].round(4)*adduct_sign[ix]) +") " for ix,i in enumerate(adducts)]))
         i1,i2,i3=np.arange(lm).tolist()*len(adducts), masses.tolist()*len(adducts), np.repeat(np.array(adducts),lm)
         mass_df=pd.DataFrame([i1,i2,i3],index=["index","input_mass","adduct"]).T.merge(adf,on="adduct")
+   
         
     else:
         print("no adducts used!")
@@ -539,8 +540,7 @@ def predict_formula(
     if os.path.exists(mass_defect_file): ms = np.load(mass_defect_file, mmap_mode="r")[cq] #precomputed float mass 
     else: ms=np.sum(cs*mdf.loc[elements].values.T,axis=1)                                  #direct float mass calculation
     
-    msc=np.sum(cs*mdf.loc[elements].values.T,axis=1) 
-    #%%
+ 
     #% Chemical filtering 
     
     flag_rdbe_min = type(min_rdbe) == float or type(min_rdbe) == int
@@ -577,7 +577,7 @@ def predict_formula(
     cs, us, ms, cq = cs[q], us[q], ms[q], cq[q]
   
     
-    #%% Pick best candidates KDTree 
+    #% Pick best candidates KDTree 
     
 
     
@@ -601,8 +601,7 @@ def predict_formula(
     
     
     tog_loss=False
-
-    if acomps.values.any() & len(adducts):
+    if (acomps.values.any()) & (len(adducts)>0):
         if acomps.values.min()<0:
             tog_loss=True
     
@@ -622,7 +621,6 @@ def predict_formula(
 
             
             tree = KDTree(fms.reshape(1,-1).T, leaf_size=200) 
-            #""+1
             flt,frt=lt[np.in1d(lt,(g["index"]))],rt[np.in1d(rt,(g["index"]))]
 
 
