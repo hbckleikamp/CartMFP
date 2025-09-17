@@ -636,6 +636,10 @@ def predict_formula(
             ams.append(fms[ind])
             aus.append(np.hstack([lu,ru]).astype(int))
 
+        if not len(acs) or not len(ams) or not len(aus): 
+            print("no formula found!")
+            return [] #return in res format?
+
         cs,ms,us=np.vstack(acs),np.hstack(ams),np.hstack(aus) 
 
         
