@@ -46,7 +46,7 @@ charges=[1]                            # default: [1]
 
 
 #performance arguments
-ppm = 100 #5                 # ppm for formula prediction
+ppm = 5                 # ppm for formula prediction
 top_candidates = 20     # only save the best predictions sorted by ppm (default 20)
 pre_filter_mass= True   # prefilter masses based top candidates counts
 filter_rdbe=False       # postfilter compositions based on rdbe
@@ -59,7 +59,6 @@ use_params  = True      # use space2cart parameter file if available
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
 MFP_output_folder = str(Path(basedir, "MFP_Output"))        # default: CartMFP folder / MFP_Output
 MFP_output_filename=""                                      # default: CartMFP_ + input_filename + .tsv 
-
 
 
 #%% Arguments for execution from command line.
