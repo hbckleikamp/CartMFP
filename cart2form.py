@@ -61,6 +61,8 @@ MFP_output_folder = str(Path(basedir, "MFP_Output"))        # default: CartMFP f
 MFP_output_filename=""                                      # default: CartMFP_ + input_filename + .tsv 
 
 
+
+
 #%% Arguments for execution from command line.
 
 def parse_path(s):
@@ -135,6 +137,7 @@ mdf,vdf=mdf["mass"],mdf["Valence"]-2
 emass = 0.000548579909  # electron mass
 mdf.loc["+"]=-emass
 mdf.loc["-"]=+emass
+
 
 #%% Functions
 
@@ -318,7 +321,7 @@ def predict_formula(
     if not os.path.exists(mass_defect_file):  warnings.warn("Mass defect file " +mass_defect_file +" not found!, run space2cart with write_mass=True for better performance")
     
 
-    #%% Parse information from composition output
+    #% Parse information from composition output
     print("")
     if os.path.exists(params_file) and use_params:
         import json
@@ -454,7 +457,17 @@ def predict_formula(
         i1,i2,i3=np.arange(lm).tolist()*len(adducts), masses.tolist()*len(adducts), np.repeat(np.array(adducts),lm)
         mass_df=pd.DataFrame([i1,i2,i3],index=["index","input_mass","adduct"]).T.merge(adf,on="adduct")
    
-        
+        if len(acomps):
+            alements=acomps.columns
+            aXrdbe = alements[alements.isin(["C"])].tolist()
+            aYrdbe = alements[alements.isin(["H", "F", "Cl", "Br", "I"])].tolist()
+            aZrdbe = alements[alements.isin(["N","P"])].tolist()
+            ardbe=(acomps[aXrdbe].sum(axis=1)-acomps[aYrdbe].sum(axis=1)/2+acomps[aZrdbe].sum(axis=1)/2).values
+
+            
+            
+
+    
     else:
         print("no adducts used!")
         adduct_mass=np.array([0])
@@ -485,6 +498,8 @@ def predict_formula(
     peak_mass = m*mass_blowup
     pmi=peak_mass.astype(np.int64)
     d=np.ceil(pmi/1e6*ppm).astype(np.int64)
+    dd=d*2
+    
 
     if pre_filter_mass:
         
@@ -522,36 +537,35 @@ def predict_formula(
         um=pmi[a_ix]+res[:,1]
    
     else:
-        um=(np.repeat(pmi-d,d)+(np.arange(d.sum()) - np.repeat(np.cumsum(d)-d, d))).astype(np.uint64)
-        a_ix=np.repeat(np.arange(len(m)),d)
+        um=(np.repeat(pmi-d,dd)+(np.arange(dd.sum()) - np.repeat(np.cumsum(dd)-dd, dd))).astype(np.uint64)
+        a_ix=np.repeat(np.arange(len(m)),dd)
         
-        #here is a bug already
+
 
     ## Formula prediction 
     x = emp[um].astype(np.int64)
     mr=np.arange(x[:,1].sum()) - np.repeat(np.cumsum(x[:,1])-x[:,1], x[:,1])
     cq=np.repeat(x[:,0],x[:,1])+mr
-    cs= comps[cq]
+    cs= comps[cq].copy()
     us=np.repeat(a_ix,x[:,1].astype(int))
+ 
+    #test=np.hstack([(um/mass_blowup).reshape(-1,1),comps[x[:,0]]])
 
-        
-        
+
+ 
     if os.path.exists(mass_defect_file): ms = np.load(mass_defect_file, mmap_mode="r")[cq] #precomputed float mass 
     else: ms=np.sum(cs*mdf.loc[elements].values.T,axis=1)                                  #direct float mass calculation
-    
+ 
  
     #% Chemical filtering 
-    
     flag_rdbe_min = type(min_rdbe) == float or type(min_rdbe) == int
     flag_rdbe_max = type(max_rdbe) == float or type(max_rdbe) == int
-    
     rdbe_bitlim=np.int8
     if flag_rdbe_min or flag_rdbe_max:
         if max([abs(i) for i in np.array([min_rdbe,max_rdbe])[flag_rdbe_min,flag_rdbe_max]][0])>=256: 
             rdbe_bitlim=np.int16
     
     q=np.ones(len(cs),dtype=bool)
-    
     
     #RDBE filtering
     if filter_rdbe:
@@ -575,158 +589,105 @@ def predict_formula(
             q=q & (ev>=elow) & (ev<=ehigh)
     cs, us, ms, cq = cs[q], us[q], ms[q], cq[q]
   
-    
-    #% Pick best candidates KDTree 
-    
+    #subtract adduct mass, and composition
+    ms+=(adduct_mass*np.array(adduct_sign))[us//len(masses)]
 
-    
-    print("Picking best "+str(top_candidates)+" candidates.")
-    print("")
-    
-    
-    n=min(top_candidates,len(ms))
-    uu,uc=np.unique(us,return_counts=True)
-    q=uc<top_candidates
-    lt,rt,lu,ru,l,r=uu[q],uu[~q],[],[],[],[]
-    
-    #tree of unique compositions
-    cqu,cqix=np.unique(cq,return_index=True)
-    ms,cs=ms[cqix],cs[cqix]
-    
-    #this gives you unique compositions and masses
-
-    #rare case: loss adducts (like -H+) can result in compositions with negative element counts
-    #then pick closest has to be done separately for each adduct
-    
-    
-    tog_loss=False
+    #add adducts to composition
     if (acomps.values.any()) & (len(adducts)>0):
-        if acomps.values.min()<0:
-            tog_loss=True
-    
-    
-    if tog_loss: 
+
+        missing=list(set(acomps.columns)-set(elements))
+        cs=np.hstack([cs,np.zeros([len(cs),len(missing)],cs.dtype)]) #update cs
+        elements=np.hstack([elements,missing])                       #update elements
+        
+        ac=np.hstack([np.argwhere(elements==e)[0] for e in acomps.columns])
+        av=acomps.values.astype(int)[us//len(masses)]
+
+        cs=cs.astype(np.int16)
+        cs[:,ac]+=acomps.values.astype(int)[us//len(masses)]
+        q=~np.any((cs.astype(np.int16)[:,ac]+av)<0,axis=1)
+        cs, us, ms, cq = cs[q].astype(comps.dtype), us[q], ms[q], cq[q]
+       
+
+    if len(ms):
+        print("")
+        uu,uc=np.unique(us%len(masses),return_counts=True)
+        q=uc>top_candidates
+        lt,mt=uu[~q],uu[q] #less than, more than
+        
      
-        acs,ams,aus=[],[],[]
-        ga=mass_df["adduct"].iloc[uu].reset_index().groupby("adduct")
-        for a,g in ga:
-            q=np.ones(len(cs),dtype=bool)
-            neg_adduct=acomps.loc[a]
-            neg_adduct=neg_adduct[neg_adduct<0]
-            for k,v in neg_adduct.items():
-                eix=np.argwhere(elements==k)[0]
-                q[(cs[:,eix]<int(v*-1)).flatten()]=False            
-            fcs,fms=cs[q],ms[q]
-
+        ltq=np.isin(us%len(masses),lt)
+        mtq=np.isin(us%len(masses),mt)
+        f_cs,f_us,f_ms=cs[ltq],us[ltq],ms[ltq] #final
+      
+        if len(mt): 
+            print("Picking best "+str(top_candidates)+" candidates.")
+            #tree of unique compositions
+            cqu,cqix=np.unique(cq,return_index=True)
+            cs,ms,us=cs[cqix],ms[cqix],us[cqix]
             
-            tree = KDTree(fms.reshape(1,-1).T, leaf_size=200) 
-            flt,frt=lt[np.in1d(lt,(g["index"]))],rt[np.in1d(rt,(g["index"]))]
+            tree = KDTree(ms.reshape(1,-1).T, leaf_size=200) 
+            r = tree.query(masses[mt].reshape(1,-1).T, return_distance=False,k=top_candidates).flatten()
 
+            f_cs=np.vstack([f_cs,cs[r]])
+            f_ms=np.hstack([f_ms,ms[r]])
+            f_us=np.hstack([f_us,us[r]]) 
+    
 
-            if len(flt): #query with radius (all candidates)
-                l=tree.query_radius(m[flt].reshape(1,-1).T,r=m[flt]*ppm/1e6)
-                l,lu=np.hstack(l),np.repeat(flt,[len(i) for i in l])
+        res=pd.DataFrame(mass_df.iloc[f_us,:])
+        res["pred_mass"]=f_ms
+        res["ppm"]=(res["pred_mass"]-res["input_mass"])/res["input_mass"]*1e6 #slow
+        res["appm"]=res["ppm"].abs()
+        res["rdbe"]=(  f_cs[:, Xrdbe].sum(axis=1).astype(rdbe_bitlim)*2
+                      -f_cs[:, Yrdbe].sum(axis=1).astype(rdbe_bitlim)
+                      +f_cs[:, Zrdbe].sum(axis=1).astype(rdbe_bitlim))/2+1
+        
+        if len(acomps): res["rdbe"]+=ardbe[f_us//len(masses)]    #update rdbe with adducts
+        res[elements]=f_cs
+        res["index"]=res["index"].astype(int)
+        
+        #add formula
+        if add_formula:     # add formula string
             
-            if len(frt): #query with n (top candidates)
-                r = tree.query(m[frt].reshape(1,-1).T, return_distance=False,k=n).flatten() 
-                ru= np.repeat(frt,n)
+            q=res.columns.isin(mdf.index)
+            hill=res.columns[q].sort_values().tolist()
+            res=res[res.columns[~q].tolist()+hill]
             
-            ind=np.hstack([l,r]).astype(int)
-            acs.append(fcs[ind])
-            ams.append(fms[ind])
-            aus.append(np.hstack([lu,ru]).astype(int))
-
-        if not len(acs) or not len(ams) or not len(aus): 
-            print("no formula found!")
-            return [] #return in res format?
-
-        cs,ms,us=np.vstack(acs),np.hstack(ams),np.hstack(aus) 
-
-        
-
-
-    else: #normal situation (all adducts at one)
-        
-        tree = KDTree(ms.reshape(1,-1).T, leaf_size=200) 
-
-        if len(lt): #query with radius (all candidates)
-            l=tree.query_radius(m[lt].reshape(1,-1).T,r=m[lt]*ppm/1e6)
-            l,lu=np.hstack(l),np.repeat(lt,[len(i) for i in l])
-        
-        if len(rt): #query with n (top candidates)
-            r = tree.query(m[rt].reshape(1,-1).T, return_distance=False,k=n).flatten() 
-            ru= np.repeat(rt,n)
-        
-        ind=np.hstack([l,r]).astype(int)
-        ms,cs,us=ms[ind],cs[ind],np.hstack([lu,ru]).astype(int)
-  
-
-    #%%
-
-    res=pd.DataFrame(mass_df.iloc[us,:])
-    if not os.path.exists(mass_defect_file): res["pred_mass"]=ms
-    else: res["pred_mass"]=np.sum(cs*mdf.loc[elements].values.T,axis=1)
-    res["ppm"]=(res["pred_mass"]-res["mass"])/res["mass"]*1e6 #slow
-    res["appm"]=res["ppm"].abs()
-    res["rdbe"]=(  cs[:, Xrdbe].sum(axis=1).astype(rdbe_bitlim)*2
-                  -cs[:, Yrdbe].sum(axis=1).astype(rdbe_bitlim)
-                  +cs[:, Zrdbe].sum(axis=1).astype(rdbe_bitlim))/2+1
-    res[elements]=cs
-    res["index"]=res["index"].astype(int)
-    
-#%%
-    
-
-    #pick closest,for rare case: loss adducts (like -H+) 
-    if tog_loss: 
-        res=res.sort_values(by=["index","appm"]).drop_duplicates()
-        res=res.groupby("index",sort=False).head(top_candidates)
-        
-    if not pre_filter_mass or acomps.values.any(): res=res[res["appm"]<=ppm]
-        
-    res=map_umass.merge(res,on="index",how="inner") 
-    
-
-    #%% Combine with original index 
-    
-    
-    
-    if len(adducts): 
-        res[list(set(acomps.columns)-set(elements))]=0
-    
-    if add_formula:     # add formula string
-        
-        q=res.columns.isin(mdf.index)
-        hill=res.columns[q].sort_values().tolist()
-        res=res[res.columns[~q].tolist()+hill]
-        
-        #construct element string
-        ecounts=res[hill]
-        e_arr=np.tile(hill,len(res)).reshape(len(res),-1) 
-        e_arr=np.where(ecounts==0,"",e_arr)
-        eles=ecounts.applymap(str).replace("0","").replace("1","")
-        res["formula"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]]
-        
-        #generate element string with adducts
-        if len(adducts): 
-            res[acomps.columns]+=acomps.loc[res.adduct,acomps.columns].values.astype(int)
-            ecounts=res[hill].astype(int)
+            #with adduct
+            ecounts=res[hill]
             e_arr=np.tile(hill,len(res)).reshape(len(res),-1) 
             e_arr=np.where(ecounts==0,"",e_arr)
             eles=ecounts.applymap(str).replace("0","").replace("1","")
-            res["formula+adduct"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]]
-    
-    if keep_all: 
-        missing_index=np.argwhere(~np.in1d(np.arange(lm),np.unique(us))).tolist()
+            res["formula"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]]
+
+            #without adduct
+            if len(adducts): 
+                av=(acomps*adduct_sign)
+                ecounts[alements]-=av.iloc[f_us//len(masses)].values.astype(int)
+                e_arr=np.tile(hill,len(res)).reshape(len(res),-1) 
+                e_arr=np.where(ecounts==0,"",e_arr)
+                eles=ecounts.applymap(str).replace("0","").replace("1","")
+                res["formula-adduct"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]]
+
         
-        if len(missing_index):
-            missing_rows=mass_df[["index","input_mass"]].drop_duplicates().set_index("index").loc[missing_index,:].reset_index()
-            missing_rows[res.columns[2:]]=0
-            missing_rows["adduct"]=""
-            res=pd.concat([res,missing_rows])
-    
-    res=res.sort_values(by=["original_index","appm"]).reset_index(drop=True)
+        if not pre_filter_mass or acomps.values.any(): res=res[res["appm"]<=ppm]
+        res=map_umass.merge(res,on="index",how="inner") 
+
+        if keep_all: 
+            missing_index=np.argwhere(~np.in1d(np.arange(lm),np.unique(us))).tolist()
+            
+            if len(missing_index):
+                missing_rows=mass_df[["index","input_mass"]].drop_duplicates().set_index("index").loc[missing_index,:].reset_index()
+                missing_rows[res.columns[2:]]=0
+                missing_rows["adduct"]=""
+                res=pd.concat([res,missing_rows])
+        
+        res=res.sort_values(by=["original_index","appm"]).reset_index(drop=True)
 #%%
+
+    else:
+        rc=['index', 'input_mass', 'adduct', 'adduct_mass', 'charge', 'mass','pred_mass', 'ppm', 'appm']
+        res=pd.DataFrame(columns=rc)
+    
     return res
     
         
@@ -736,8 +697,6 @@ if __name__=="__main__":
 
     res=predict_formula()
     
-    
-    
     if not os.path.exists(MFP_output_folder): os.makedirs(MFP_output_folder)
     if not len(MFP_output_filename): 
         if os.path.exists(input_file): MFP_output_filename=Path(input_file).stem+"_mfp.tsv"
@@ -746,7 +705,7 @@ if __name__=="__main__":
             MFP_output_filename=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")+"_mfp.tsv"
     MFP_outpath=str(Path(MFP_output_folder,MFP_output_filename))
     # res.to_csv(MFP_outpath,sep="\t", index=False) #without pyarrow
-    
+
     
     #faster writing than pandas
     new_pa_dataframe = pyarrow.Table.from_pandas(res)
