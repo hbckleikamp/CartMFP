@@ -44,7 +44,7 @@ max_rdbe = 80
 #advanced chemical rules
 filt_7gr=True                                                                       #Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
 filt_LewisSenior=True                                                               #Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence)
-filt_ratios="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]"  #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage
+filt_ratios="HC[0,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]"  #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage
 filt_NOPS=True                                                                      #Golden Rules #6:   Filter on NOPS probabilities
 
 #performance arguments
@@ -60,6 +60,7 @@ Cartesian_output_file=""
 write_params=True #write an output file with arguments used to construct the db
 remove=True #removes unsorted composition file and sorted index file after building sorted array
 debug=False #True
+
 
 #%% store parameters
 params={}
@@ -252,6 +253,9 @@ if edf.isnull().sum().sum(): #fill in missing values from composotion string.
 
 
 edf[["low","high"]]=edf[["low","high"]].fillna(0).astype(int)
+edf["high"]=np.clip(edf["high"],0,(max_mass/mdf.loc[edf.index]).astype(int)) #limit to max mass
+
+
 edf = edf.sort_values(by="high", ascending=False)
 edf["arr"] = edf.apply(lambda x: np.arange(
     x.loc["low"], x.loc["high"]+1), axis=1)
@@ -342,9 +346,10 @@ if filt_ratios:
     
         #fill missing values
         erats=erats.fillna("0")
-        q=erats["high"]==0
+        q=(erats["high"]==0) | (erats["high"]=="")
         erats.loc[q,"high"]=edf.iloc[erats.loc[q,"lix"]]["high"].values
         erats[["low","high"]]=erats[["low","high"]].astype(float)
+       
     
 #parse NOPS probability [Golden rule #6]
 nops=[]
@@ -500,8 +505,7 @@ if need_batches:
         if flag_rdbe_min: q=q & ((base_rdbe+batch_rdbe.max())>=min_rdbe)
         if flag_rdbe_max: q=q & ((base_rdbe-batch_rdbe.min())<=max_rdbe)
         mass,zm=mass[q],zm[q]
-        
-  
+
     #precompute dbe (LEWIS & SENIOR rules) [Golden rule #2]
     if filt_LewisSenior: #integer dbe
         
@@ -564,7 +568,9 @@ if need_batches:
     czs=np.cumsum(vs*[np.sum(x>am) for x in xs])
     mass_ixs=np.hstack([np.interp(np.linspace(0,czs[-1],partitions+1),czs,xs).astype(int)])[1:-1]
 
+
     qtrim=len(zm)
+    #%%
     with ExitStack() as stack:
         files = [stack.enter_context(NpyAppendArray(fname, delete_if_exists=True) ) for fname in memfiles]
 
@@ -598,7 +604,7 @@ if need_batches:
             
       
             ##### chemical filtering #####
-            
+        
             qr=np.ones(len(zm),bool)
             
             #rdbe filtering
@@ -657,7 +663,6 @@ if need_batches:
                 
                 
             comps=np.load(memfiles[p])
-            
             #calculate mass (memory efficient batched addition) 
             mi = np.zeros(len(comps), dtype=np.uint64)
             if write_mass: mf = np.zeros(len(comps), dtype=np.float32) #can be made full float64 for furter speedup
@@ -780,4 +785,13 @@ nz=np.argwhere(emp[:,1])[:,0]
 emp[nz,0]=np.cumsum(emp[nz,1])-emp[nz,1]
 emp.flush()
 
+#%% test
 
+
+# m=np.load(mass_output_path)
+# comps=np.load(comp_output_path)
+# abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
+
+# comps = np.load(comp_output_path, mmap_mode="r")
+# m = np.load(mass_output_path, mmap_mode="r") #test
+# abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
