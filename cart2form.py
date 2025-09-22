@@ -42,7 +42,7 @@ max_rdbe = ""
 mode = "pos"                     # ionization mode. Options: " ", "positive", "negative" # positive substracts electron mass, negative adds electron mass, "" doesn't add anything
 adducts =["+H+","+Na+","+K",      # default positive adducts "--","+H+","+Na+","+K"
          "+-","+Cl-","-H+"]            # default negative adducts "+-","-H+","+Cl-" 
-charges=[1]                            # default: [1]
+charges=[3]                            # default: [1]
 
 
 #performance arguments
@@ -234,20 +234,20 @@ def read_input(tabfile, *,
 
 #parse form
 def parse_form(form): #chemical formular parser
-    e,c,comps="","",[]
+    e,c,fc="","",[]
     for i in form:
         if i.isupper(): #new entry   
             if e: 
                 if not c: c="1"
-                comps.append([e,c])
+                fc.append([e,c])
             e,c=i,""         
         elif i.islower(): e+=i
         elif i.isdigit(): c+=i
     if e: 
         if not c: c="1"
-        comps.append([e,c])
+        fc.append([e,c])
     
-    cdf=pd.DataFrame(comps,columns=["elements","counts"]).set_index("elements").T.astype(int)
+    cdf=pd.DataFrame(fc,columns=["elements","counts"]).set_index("elements").T.astype(int)
     cdf["+"]=form.count("+")
     cdf["-"]=form.count("-")
     return cdf
@@ -321,6 +321,8 @@ def predict_formula(
     if not os.path.exists(mass_defect_file):  warnings.warn("Mass defect file " +mass_defect_file +" not found!, run space2cart with write_mass=True for better performance")
     
 
+
+    
     #% Parse information from composition output
     print("")
     if os.path.exists(params_file) and use_params:
@@ -420,7 +422,7 @@ def predict_formula(
     
     if isinstance(masses,pd.Series) or isinstance(masses,pd.DataFrame):  mass_ix=masses.index #keep original index
     else:                                                                mass_ix=np.arange(len(masses)) #make new index
-
+    
     masses,umass_ix=np.unique(masses,return_inverse=True)
     map_umass=pd.DataFrame(np.vstack([mass_ix,umass_ix]).T,columns=["original_index","index"])
  
@@ -441,7 +443,7 @@ def predict_formula(
   
     if len(adducts):
         adduct_sign    =[-1  if a[0]=="-" else  1  for a in adducts]
-        adduct_mass=[getMz(a[1:]) for a in adducts]
+        adduct_mass=np.array([getMz(a[1:]) for a in adducts])
         
         adf=pd.DataFrame([adducts,adduct_mass]).T
         adf.columns=["adduct","adduct_mass"]
@@ -454,8 +456,13 @@ def predict_formula(
         if "p" in mode or "+" in mode:  print("mode is positive,")
         
         print("adducts used: "+", ".join([i+" ("+str(adduct_mass[ix].round(4)*adduct_sign[ix]) +") " for ix,i in enumerate(adducts)]))
-        i1,i2,i3=np.arange(lm).tolist()*len(adducts), masses.tolist()*len(adducts), np.repeat(np.array(adducts),lm)
-        mass_df=pd.DataFrame([i1,i2,i3],index=["index","input_mass","adduct"]).T.merge(adf,on="adduct")
+        la=len(adducts)
+        mass_df=pd.DataFrame(np.tile(np.vstack([np.arange(lm),masses]).T,(la, 1)),columns=["index","input_mass"])
+        mass_df["index"]=mass_df["index"].astype(int)
+    
+        mass_df["adduct_mass"]=np.repeat(adduct_mass*adduct_sign,len(masses))
+        mass_df["adduct_ix"]=np.repeat(np.arange(len(adducts)),len(masses))
+        mass_df["adduct"]=np.repeat(adducts,len(masses))
    
         if len(acomps):
             alements=acomps.columns
@@ -464,18 +471,14 @@ def predict_formula(
             aZrdbe = alements[alements.isin(["N","P"])].tolist()
             ardbe=(acomps[aXrdbe].sum(axis=1)-acomps[aYrdbe].sum(axis=1)/2+acomps[aZrdbe].sum(axis=1)/2).values
 
-            
-            
-
-    
     else:
         print("no adducts used!")
         adduct_mass=np.array([0])
         mass_df=pd.DataFrame([np.arange(lm),masses],index=["index","input_mass"]).T
         mass_df["adduct_mass"]=0
+        mass_df["adduct_ix"]=0
         mass_df["adduct"]=""
 
-        
     
     ### Add charges ###
     mass_df["charge"]=[charges]*len(mass_df)
@@ -486,11 +489,12 @@ def predict_formula(
 
     #this allows for one "special" adduct, and the rest of the adducts are  +/- emass
     mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]
-    if mode=="+": mass_df["mass"]-=emass*(mass_df["charge"]-1)
-    if mode=="-": mass_df["mass"]+=emass*(mass_df["charge"]-1)
-    
+    if mode=="pos": mass_df["mass"]+=emass*(mass_df["charge"]-1) #correct for regular adduct
+    if mode=="neg": mass_df["mass"]-=emass*(mass_df["charge"]-1) #correct for regular adduct
     mass_df=mass_df[mass_df["mass"]<max_mass].reset_index(drop=True) #filter on max mass
     m=mass_df["mass"].values
+    
+    aix=mass_df.pop("adduct_ix").values
 
 
     
@@ -501,6 +505,12 @@ def predict_formula(
     #load mass file
     emp   = np.load(mass_index_file, mmap_mode="r")
     comps = np.load(composition_file, mmap_mode="r")
+    
+    #ensure no changes are made
+    emp.flags.writeable         = False
+    emp.flags.writebackifcopy   = False
+    comps.flags.writeable       = False
+    comps.flags.writebackifcopy = False
     
     peak_mass = m*mass_blowup
     pmi=peak_mass.astype(np.int64)
@@ -515,13 +525,9 @@ def predict_formula(
         tog=np.array([True]*len(pmi))
         res=[np.vstack([np.arange(len(pmi)),c-1]).T]
         
-           
         while any(tog): 
-            
-        
             r=emp[pmi+c,1]
             l=emp[pmi-c,1]
-            
             ql=np.argwhere((l>0) & (tog))[:,0]
             qr=np.argwhere((r>0) & (tog))[:,0]
             
@@ -529,15 +535,11 @@ def predict_formula(
             
             res.append(np.vstack([ql,-c[ql]]).T)
             res.append(np.vstack([qr,c[qr]]).T)
-            
             c+=1
             t[ql]-=l[ql]
             t[qr]-=r[qr]
-            
             tog[t<0]=False
             tog[c>d]=False
-            
-       
             
         res=np.vstack(res)
         a_ix=res[:,0]
@@ -550,16 +552,12 @@ def predict_formula(
 
 
     ## Formula prediction 
-    x = emp[um].astype(np.int64)
+    x = emp[um].astype(np.int64)#.copy()
     mr=np.arange(x[:,1].sum()) - np.repeat(np.cumsum(x[:,1])-x[:,1], x[:,1])
     cq=np.repeat(x[:,0],x[:,1])+mr
-    cs= comps[cq].copy()
+    cs= comps[cq]#.copy()
     us=np.repeat(a_ix,x[:,1].astype(int))
- 
-    #test=np.hstack([(um/mass_blowup).reshape(-1,1),comps[x[:,0]]])
 
-
- 
     if os.path.exists(mass_defect_file): ms = np.load(mass_defect_file, mmap_mode="r")[cq] #precomputed float mass 
     else: ms=np.sum(cs*mdf.loc[elements].values.T,axis=1)                                  #direct float mass calculation
  
@@ -596,10 +594,10 @@ def predict_formula(
             q=q & (ev>=elow) & (ev<=ehigh)
     cs, us, ms, cq = cs[q], us[q], ms[q], cq[q]
   
-    #subtract adduct mass, and composition
-    ms+=(adduct_mass*np.array(adduct_sign))[us//len(masses)]
+    #subtract adduct mass, and composition (is this needed?)
+    ms+=mass_df.iloc[us]["adduct_mass"].values.astype(ms.dtype) #compatible with multiple charges
+    
 
-    #add adducts to composition
     if (acomps.values.any()) & (len(adducts)>0):
 
         missing=list(set(acomps.columns)-set(elements))
@@ -607,13 +605,15 @@ def predict_formula(
         elements=np.hstack([elements,missing])                       #update elements
         
         ac=np.hstack([np.argwhere(elements==e)[0] for e in acomps.columns])
-        av=acomps.values.astype(int)[us//len(masses)]
-
-        cs=cs.astype(np.int16)
-        cs[:,ac]+=acomps.values.astype(int)[us//len(masses)]
+        av=acomps.values[aix[us]].astype(int)
+     
+        #account for negative adducts
         q=~np.any((cs.astype(np.int16)[:,ac]+av)<0,axis=1)
         cs, us, ms, cq = cs[q].astype(comps.dtype), us[q], ms[q], cq[q]
-       
+        
+        #add adduct to composition
+        cs=cs.astype(np.int16)
+        cs[:,ac]+=av[q]
 
     if len(ms):
         print("")
@@ -623,7 +623,6 @@ def predict_formula(
         
      
         ltq=np.isin(us%len(masses),lt)
-        mtq=np.isin(us%len(masses),mt)
         f_cs,f_us,f_ms=cs[ltq],us[ltq],ms[ltq] #final
       
         if len(mt): 
@@ -642,16 +641,19 @@ def predict_formula(
 
         res=pd.DataFrame(mass_df.iloc[f_us,:])
         res["pred_mass"]=f_ms
-        res["ppm"]=(res["pred_mass"]-res["input_mass"])/res["input_mass"]*1e6 #slow
+        res["ppm"]=(res["input_mass"]*res["charge"]-res["pred_mass"])/res["pred_mass"]*1e6 #slow
         res["appm"]=res["ppm"].abs()
         res["rdbe"]=(  f_cs[:, Xrdbe].sum(axis=1).astype(rdbe_bitlim)*2
                       -f_cs[:, Yrdbe].sum(axis=1).astype(rdbe_bitlim)
                       +f_cs[:, Zrdbe].sum(axis=1).astype(rdbe_bitlim))/2+1
         
-        if len(acomps): res["rdbe"]+=ardbe[f_us//len(masses)]    #update rdbe with adducts
+        if len(acomps): res["rdbe"]+=ardbe[aix[f_us]] #update rdbe with adducts
+ 
+        
         res[elements]=f_cs
         res["index"]=res["index"].astype(int)
         
+    
         #add formula
         if add_formula:     # add formula string
             
@@ -664,18 +666,17 @@ def predict_formula(
             e_arr=np.tile(hill,len(res)).reshape(len(res),-1) 
             e_arr=np.where(ecounts==0,"",e_arr)
             eles=ecounts.applymap(str).replace("0","").replace("1","")
-            res["formula"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]]
+            res["formula+adduct"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]]
 
             #without adduct
             if len(adducts): 
-                av=(acomps*adduct_sign)
-                ecounts[alements]-=av.iloc[f_us//len(masses)].values.astype(int)
+                ecounts[alements]-=acomps.values[aix[f_us]].astype(int)
                 e_arr=np.tile(hill,len(res)).reshape(len(res),-1) 
                 e_arr=np.where(ecounts==0,"",e_arr)
                 eles=ecounts.applymap(str).replace("0","").replace("1","")
-                res["formula-adduct"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]]
+                res["formula"]=["".join(i) for i in np.hstack([e_arr,eles])[:,np.repeat(np.arange(len(hill)),2)+np.tile(np.array([0,len(hill)]),len(hill))]] 
 
-        
+   
         if not pre_filter_mass or acomps.values.any(): res=res[res["appm"]<=ppm]
         res=map_umass.merge(res,on="index",how="inner") 
 
