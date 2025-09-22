@@ -480,7 +480,14 @@ def predict_formula(
     ### Add charges ###
     mass_df["charge"]=[charges]*len(mass_df)
     mass_df=mass_df.explode("charge")
-    mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]*mass_df["charge"]
+    
+    #this implies that multiple charged species should have the same adduct each time, so no hybrid adducts
+    # mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]*mass_df["charge"]
+
+    #this allows for one "special" adduct, and the rest of the adducts are  +/- emass
+    mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]
+    if mode=="+": mass_df["mass"]-=emass*(mass_df["charge"]-1)
+    if mode=="-": mass_df["mass"]+=emass*(mass_df["charge"]-1)
     
     mass_df=mass_df[mass_df["mass"]<max_mass].reset_index(drop=True) #filter on max mass
     m=mass_df["mass"].values
