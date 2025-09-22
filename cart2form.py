@@ -442,7 +442,7 @@ def predict_formula(
     
   
     if len(adducts):
-        adduct_sign    =[-1  if a[0]=="-" else  1  for a in adducts]
+        adduct_sign    =np.array([-1  if a[0]=="-" else  1  for a in adducts])
         adduct_mass=np.array([getMz(a[1:]) for a in adducts])
         
         adf=pd.DataFrame([adducts,adduct_mass]).T
@@ -460,7 +460,7 @@ def predict_formula(
         mass_df=pd.DataFrame(np.tile(np.vstack([np.arange(lm),masses]).T,(la, 1)),columns=["index","input_mass"])
         mass_df["index"]=mass_df["index"].astype(int)
     
-        mass_df["adduct_mass"]=np.repeat(adduct_mass*adduct_sign,len(masses))
+        mass_df["adduct_mass"]=np.repeat(adduct_mass*adduct_sign.reshape(-1,1),len(masses))
         mass_df["adduct_ix"]=np.repeat(np.arange(len(adducts)),len(masses))
         mass_df["adduct"]=np.repeat(adducts,len(masses))
    
@@ -617,14 +617,14 @@ def predict_formula(
 
     if len(ms):
         print("")
-        uu,uc=np.unique(us%len(masses),return_counts=True)
+        uu,uc=np.unique(mass_df["index"].iloc[us],return_counts=True)
         q=uc>top_candidates
         lt,mt=uu[~q],uu[q] #less than, more than
         
      
-        ltq=np.isin(us%len(masses),lt)
+        ltq=np.isin(mass_df["index"].iloc[us],lt)
         f_cs,f_us,f_ms=cs[ltq],us[ltq],ms[ltq] #final
-      
+              
         if len(mt): 
             print("Picking best "+str(top_candidates)+" candidates.")
             #tree of unique compositions
@@ -652,7 +652,7 @@ def predict_formula(
         
         res[elements]=f_cs
         res["index"]=res["index"].astype(int)
-        
+   
     
         #add formula
         if add_formula:     # add formula string
@@ -678,7 +678,8 @@ def predict_formula(
 
    
         if not pre_filter_mass or acomps.values.any(): res=res[res["appm"]<=ppm]
-        res=map_umass.merge(res,on="index",how="inner") 
+
+        res=map_umass.merge(res.drop_duplicates(),on="index",how="inner") 
 
         if keep_all: 
             missing_index=np.argwhere(~np.in1d(np.arange(lm),np.unique(us))).tolist()
