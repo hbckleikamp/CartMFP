@@ -460,7 +460,7 @@ def predict_formula(
         mass_df=pd.DataFrame(np.tile(np.vstack([np.arange(lm),masses]).T,(la, 1)),columns=["index","input_mass"])
         mass_df["index"]=mass_df["index"].astype(int)
     
-        mass_df["adduct_mass"]=np.repeat(adduct_mass*adduct_sign.reshape(-1,1),len(masses))
+        mass_df["adduct_mass"]=np.repeat(adduct_mass.flatten()*adduct_sign.flatten(),len(masses))
         mass_df["adduct_ix"]=np.repeat(np.arange(len(adducts)),len(masses))
         mass_df["adduct"]=np.repeat(adducts,len(masses))
    
