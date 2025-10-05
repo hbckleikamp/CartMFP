@@ -19,6 +19,7 @@ import pyarrow
 import pyarrow.csv as pc
 from sklearn.neighbors import KDTree
 
+
 # %% change directory to script directory (should work on windows and mac)
 basedir = str(Path(os.path.abspath(getsourcefile(lambda: 0))).parents[0])
 os.chdir(basedir)
@@ -42,7 +43,7 @@ max_rdbe = ""
 mode = "pos"                     # ionization mode. Options: " ", "positive", "negative" # positive substracts electron mass, negative adds electron mass, "" doesn't add anything
 adducts =["+H+","+Na+","+K",      # default positive adducts "--","+H+","+Na+","+K"
          "+-","+Cl-","-H+"]            # default negative adducts "+-","-H+","+Cl-" 
-charges=[3]                            # default: [1]
+charges=[1]                            # default: [1]
 
 
 #performance arguments
@@ -309,6 +310,22 @@ def predict_formula(
 
     #%% Check filepaths
     
+    #test
+    
+    # #composition_file=mfp_db
+    # composition_file="E:/Data/Data_analysis/MFP_databases/H[200]C[75]S[30]O[20]N[10]Ni[6]P[3]_b100000max1000rdbe-5_80_7gr_customfilt_comp.npy"
+    # input_file=276.838546259699
+    # mass_index_file=""
+    # mass_defect_file=""
+    # charges=1
+    # add_formula=True
+    # ppm=10
+    # # input_file=75.94471903 #test
+    # # charges=3               #test
+    # mode="neg"
+    # adducts=["+-","-H+"]
+    
+    
     if not os.path.exists(composition_file):  composition_file=os.path.normpath(composition_file)
     if not os.path.exists(composition_file):  composition_file=composition_file.replace("[0,","[") #min element counts 
     if not os.path.exists(composition_file):  composition_file=composition_file.replace(".0,","")  #float and int
@@ -489,10 +506,12 @@ def predict_formula(
 
     #this allows for one "special" adduct, and the rest of the adducts are  +/- emass
     mass_df["mass"]=mass_df["input_mass"]*mass_df["charge"]-mass_df["adduct_mass"]
+    
+    
     if mode=="pos": mass_df["mass"]+=emass*(mass_df["charge"]-1) #correct for regular adduct
     if mode=="neg": mass_df["mass"]-=emass*(mass_df["charge"]-1) #correct for regular adduct
     mass_df=mass_df[mass_df["mass"]<max_mass].reset_index(drop=True) #filter on max mass
-    m=mass_df["mass"].values
+    m=mass_df["mass"].values.astype(float)
     
     aix=mass_df.pop("adduct_ix").values
 
@@ -507,18 +526,42 @@ def predict_formula(
     comps = np.load(composition_file, mmap_mode="r")
     
     #ensure no changes are made
-    emp.flags.writeable         = False
-    emp.flags.writebackifcopy   = False
-    comps.flags.writeable       = False
-    comps.flags.writebackifcopy = False
+    # emp.flags.writeable         = False
+    # emp.flags.writebackifcopy   = False
+    # comps.flags.writeable       = False
+    # comps.flags.writebackifcopy = False
     
     peak_mass = m*mass_blowup
-    pmi=peak_mass.astype(np.int64)
+    pmi=np.round(peak_mass,0).astype(np.int64)
     d=np.ceil(pmi/1e6*ppm).astype(np.int64)
     dd=d*2
     
 
+    #compute all
+    um=(np.repeat(pmi-d,dd)+(np.arange(dd.sum()) - np.repeat(np.cumsum(dd)-dd, dd))).astype(np.uint64)
+    a_ix=np.repeat(np.arange(len(m)),dd) 
+    
+    
+    #alternative prefilter mass?
+    # #remove missing compositions
+    # q=emp[um,1]>0
+    # um,a_ix=um[q],a_ix[q]
+            
+    # # Build KDTree
+    # tree = KDTree(um.reshape(-1,1))
+
+    # # Query all points (sorted by distance)
+    # distances, indices = tree.query(pmi.reshape(-1,1), k=top_candidates)
+    # q=distances<d.reshape(-1,1)
+    # counts=emp[um[indices[q]],1]
+    
+    #cumsum groupby
+    
+ 
+
     if pre_filter_mass:
+        
+
         
         c=np.array([1]*len(pmi)).astype(int)
         t=np.array([top_candidates]*len(pmi))-emp[pmi,1]
@@ -641,16 +684,40 @@ def predict_formula(
 
         res=pd.DataFrame(mass_df.iloc[f_us,:])
         res["pred_mass"]=f_ms
-        res["ppm"]=(res["input_mass"]*res["charge"]-res["pred_mass"])/res["pred_mass"]*1e6 #slow
+        
+        #correct for charge
+        if "charge" in res.columns:        
+            if mode=="neg": res["pred_mass"]+=(res.charge-1)*emass
+            if mode=="pos": res["pred_mass"]-=(res.charge-1)*emass
+            res["pred_mass"]/=res.charge
+        
+        #res["ppm"]=(res["input_mass"]*res["charge"]-res["pred_mass"])/res["pred_mass"]*1e6 #slow
+        #res["ppm"]=(res["mass"]-res["pred_mass"])/res["pred_mass"]*1e6 #slow
+        res["ppm"]=(res["input_mass"]-res["pred_mass"])/res["pred_mass"]*1e6 #slow
+    
+        
         res["appm"]=res["ppm"].abs()
         res["rdbe"]=(  f_cs[:, Xrdbe].sum(axis=1).astype(rdbe_bitlim)*2
                       -f_cs[:, Yrdbe].sum(axis=1).astype(rdbe_bitlim)
                       +f_cs[:, Zrdbe].sum(axis=1).astype(rdbe_bitlim))/2+1
         
+
+        
         if len(acomps): res["rdbe"]+=ardbe[aix[f_us]] #update rdbe with adducts
  
         
         res[elements]=f_cs
+        
+        #add charge
+        if mode=="neg": 
+            if "charge" in res.columns: res["-"]=res["charge"]
+            else: res["-"]=1    
+            elements=np.hstack([elements,["-"]])
+        if mode=="pos": 
+            if "charge" in res.columns: res["+"]=res["charge"]
+            else: res["+"]=1    
+            elements=np.hstack([elements,["+"]])
+     
         res["index"]=res["index"].astype(int)
    
     
@@ -659,7 +726,11 @@ def predict_formula(
             
             q=res.columns.isin(mdf.index)
             hill=res.columns[q].sort_values().tolist()
-            res=res[res.columns[~q].tolist()+hill]
+            hill=[i for i in hill if i not in ["+","-"]]
+            col_order=res.columns[~q].tolist()+hill
+            if mode=="neg": col_order+=["-"]
+            if mode=="pos": col_order+=["+"]
+            res=res[col_order]
             
             #with adduct
             ecounts=res[hill]
