@@ -44,7 +44,7 @@ max_rdbe = 80
 #advanced chemical rules
 filt_7gr=True                                                                       #Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
 filt_LewisSenior=True                                                               #Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence)
-filt_ratios="HC[0,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]"  #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage
+filt_ratios="HC[0,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]"    #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage
 filt_NOPS=True                                                                      #Golden Rules #6:   Filter on NOPS probabilities
 
 #performance arguments
@@ -320,10 +320,25 @@ need_batches = len(edf)-mem_cols
 
 #%% Parse chemical rules
 
+if filt_7gr=="Common":
+    filt_LewisSenior=True
+    filt_nops=True
+    filt_ratios="HC[0.2,3.1]FC[0,1.5]ClC[0,0.8]BrC[0,0.8]NC[0,1.3]OC[0,1.2]PC[0,0.3]SC[0,0.8]SiC[0,0.5]" #common ratio range
+    
+    
+if filt_7gr=="Extended":
+    filt_LewisSenior=True
+    filt_nops=True
+    filt_ratios="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]" #extended ratio range
+
 if not filt_7gr: #turn of 7gr [except for custom filt_ratios]
     filt_LewisSenior=False
     filt_nops=False
     if filt_ratios=="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]": filt_ratios=False
+    
+    
+
+
 
 if not "[" in filt_ratios: filt_ratios=False
     
@@ -379,7 +394,9 @@ if Cartesian_output_file=="":
     Cartesian_output_file = "".join(edf.index+"["+edf.low.astype(str)+","+edf.high.astype(
         str)+"]")+"_b"+str(mass_blowup)+"max"+str(int(max_mass))+"rdbe"+str(min_rdbe)+"_"+str(max_rdbe) 
     if filt_7gr: Cartesian_output_file+="_7gr"
-    if filt_ratios!="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]": Cartesian_output_file+="_customfilt"
+    if filt_7gr=="Common":      Cartesian_output_file+="Common"
+    elif filt_7gr=="Extended":  Cartesian_output_file+="Extended"
+    elif filt_ratios!="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]": Cartesian_output_file+="_customfilt"
     Cartesian_output_file=Cartesian_output_file.replace("[0,","[")
 else: 
     write_params=True
