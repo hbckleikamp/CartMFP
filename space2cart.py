@@ -114,6 +114,7 @@ if not hasattr(sys,'ps1'): #checks if code is executed from command line
     print("")
     locals().update(params)
 
+
 # %% General functions
 
 # Source: Eli Korvigo (https://stackoverflow.com/questions/28684492/numpy-equivalent-of-itertools-product/28684982)
@@ -474,8 +475,6 @@ if need_batches:
     
 print("")
 
-
-
 #%% Write unsorted array
 
 emp = open_memmap(m2g_output_path, mode="w+", shape=(bmax+1*mass_blowup,2),dtype=bits(bmax))
@@ -488,17 +487,17 @@ if need_batches:
         
         #base rdbe
         base_rdbe = np.ones(len(zm), dtype=rdbe_bitlim)*2
-        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=zm[:, Xrdbe].sum(axis=1)*2
-        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1)
-        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1) 
+        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=(zm[:, Xrdbe].sum(axis=1)*2).astype(rdbe_bitlim)
+        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1).astype(rdbe_bitlim)
+        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1).astype(rdbe_bitlim)
 
         #batch rdbe
         batch_rdbeX,batch_rdbeY,batch_rdbeZ=Xrdbe-mem_cols,Yrdbe-mem_cols,Zrdbe-mem_cols
         batch_rdbeX,batch_rdbeY,batch_rdbeZ=batch_rdbeX[batch_rdbeX>-1],batch_rdbeY[batch_rdbeY>-1],batch_rdbeZ[batch_rdbeZ>-1]
         batch_rdbe=np.zeros(len(bm),dtype=rdbe_bitlim)
-        if len( batch_rdbeX): batch_rdbe +=bm[:, batch_rdbeX].sum(axis=1)*2
-        if len( batch_rdbeY): batch_rdbe -=bm[:, batch_rdbeY].sum(axis=1)
-        if len( batch_rdbeZ): batch_rdbe +=bm[:, batch_rdbeZ].sum(axis=1)
+        if len( batch_rdbeX): batch_rdbe +=(bm[:, batch_rdbeX].sum(axis=1)*2).astype(rdbe_bitlim)
+        if len( batch_rdbeY): batch_rdbe -=bm[:, batch_rdbeY].sum(axis=1).astype(rdbe_bitlim)
+        if len( batch_rdbeZ): batch_rdbe +=bm[:, batch_rdbeZ].sum(axis=1).astype(rdbe_bitlim)
         
         #prefilter on base rdbe
         q=np.ones(len(mass),bool)
@@ -545,9 +544,9 @@ if need_batches:
     #re-calculate base rdbe and base dbe
     if flag_rdbe_max or flag_rdbe_min:
         base_rdbe = np.ones(len(zm), dtype=rdbe_bitlim)*2
-        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=zm[:, Xrdbe].sum(axis=1)*2
-        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1)
-        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1) 
+        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=(zm[:, Xrdbe].sum(axis=1)*2).astype(rdbe_bitlim)
+        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1).astype(rdbe_bitlim)
+        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1).astype(rdbe_bitlim)
         
     if filt_LewisSenior: base_dbe=np.sum(zm*vdf.loc[elements].values,axis=1)+2
 
@@ -570,6 +569,7 @@ if need_batches:
 
 
     qtrim=len(zm)
+
     #%%
     with ExitStack() as stack:
         files = [stack.enter_context(NpyAppendArray(fname, delete_if_exists=True) ) for fname in memfiles]
@@ -577,15 +577,15 @@ if need_batches:
 
         for ib, b in enumerate(bm):
             print("writing unsorted batch: "+str(ib)+" ( "+str(np.round((ib+1)/batches*100,2))+" %)")
- 
+                
             #filter max mass
             q=(mass<=(bmax-am[ib]))
             if not q[-1]: qtrim=np.argmax(~q) 
             zm,mas=zm[:qtrim],mass[:qtrim] #truncate mass
-            
+        
             zm[:,mem_cols:]=bm[ib]
             
-            #find partitions
+            ### find partitions
             umparts=[]
             if len(mass_ixs):
                 x=mass_ixs-am[ib]-1
@@ -627,6 +627,8 @@ if need_batches:
                 for x,row in nops.iterrows():
                     qr=qr & ((~np.all(zm[:,nops.loc[x,"ixs"]]>row.lim,axis=1)) | (np.all(zm[:,nops_ixs]<row.values[2:-1],axis=1)))   
             
+            #calculate emp here?
+            
             
             ##### write in partitions #####
             for p in range(partitions):
@@ -663,7 +665,9 @@ if need_batches:
                 
                 
             comps=np.load(memfiles[p])
-            #calculate mass (memory efficient batched addition) 
+            
+            
+            #precise float mass (memory efficient batched addition) 
             mi = np.zeros(len(comps), dtype=np.uint64)
             if write_mass: mf = np.zeros(len(comps), dtype=np.float32) #can be made full float64 for furter speedup
             remRam=maxRam-(mm.free-psutil.virtual_memory().free)
@@ -738,9 +742,9 @@ if not need_batches:
         
         #base rdbe
         base_rdbe = np.ones(len(zm), dtype=rdbe_bitlim)*2
-        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=zm[:, Xrdbe].sum(axis=1)*2
-        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1)
-        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1) 
+        if len(Xrdbe[Xrdbe<mem_cols]): base_rdbe +=(zm[:, Xrdbe].sum(axis=1)*2).astype(rdbe_bitlim)
+        if len(Yrdbe[Yrdbe<mem_cols]): base_rdbe -=zm[:, Yrdbe].sum(axis=1).astype(rdbe_bitlim)
+        if len(Zrdbe[Zrdbe<mem_cols]): base_rdbe +=zm[:, Zrdbe].sum(axis=1).astype(rdbe_bitlim)
 
         #prefilter on base rdbe
         q=np.ones(len(mass),bool)
@@ -776,12 +780,11 @@ if not need_batches:
 
     
     #### write outputs ####
-    
     np.save(comp_output_path, zm)
     emp[:(mass.max()+1).astype(int),1]=np.bincount(mass.astype(np.int64))
 
 
-nz=np.argwhere(emp[:,1])[:,0]
+nz=np.argwhere(emp[:,1])[:,0] #this is completely wrong?
 emp[nz,0]=np.cumsum(emp[nz,1])-emp[nz,1]
 emp.flush()
 
