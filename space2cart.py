@@ -42,10 +42,14 @@ min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depe
 max_rdbe = 80
 
 #advanced chemical rules
-filt_7gr=True                                                                       #Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
+filt_7gr="Common"                                                                   #False,True,"Common","Extended",Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
 filt_LewisSenior=True                                                               #Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence)
 filt_ratios="HC[0,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]"    #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage
 filt_NOPS=True                                                                      #Golden Rules #6:   Filter on NOPS probabilities
+filt_multimetal=1                                                                   #only allow a single metallic atom type
+metals=["Na","Mg","Al","Si","K","Ca","Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga","Ge","As","Se",
+        "Rb","Sr","Y","Zr","Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Sb","Te","Cs","Ba","la","Ce",
+        "Pr","Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb","Lu","Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg","Tl","Pb"]
 
 #performance arguments
 maxmem = 10e9 #0.7      # fraction of max free memory usage 
@@ -248,6 +252,19 @@ edf["low"]=pd.to_numeric(edf["low"],errors='coerce')
 edf["high"]=pd.to_numeric(edf["high"],errors='coerce')
 edf=edf.ffill(axis=1)
 
+if filt_7gr=="Common":     #max element count restriction (Wiley/DNP)
+   rep={}
+   if   max_mass<=500: rep={"C":39,   "H":72, "N":20,	"O":20,	"P":9,	"S":10,	"F":16,	"Cl":10,	"Br":4,	"Si":8}
+   elif max_mass<=1000:rep={"C":78,   "H":126,"N":25,	"O":27,	"P":9,	"S":14,	"F":34,	"Cl":12,	"Br":8,	"Si":14}
+   elif max_mass<=2000:rep={"C":156,  "H":236,"N":32,	"O":63,	"P":9,	"S":14,	"F":48,	"Cl":12,	"Br":10,"Si":15}
+   elif max_mass<=3000:rep={"C":162,  "H":236,"N":48,	"O":78,	"P":9,	"S":14,	"F":48,	"Cl":12,	"Br":10,"Si":15}
+   for k,v in rep.items():
+       if k in edf.index:
+           edf.loc[k,"high"]=v 
+
+       
+   
+
 if edf.isnull().sum().sum(): #fill in missing values from composotion string.
     print("Warning! missing element maxima detected in composition. Imputing from maximum mass (this might affect performance)")
     edf.loc[edf["high"].isnull(),"high"]=(max_mass/mdf.loc[edf.index]).astype(int).values[edf["high"].isnull()].flatten()
@@ -263,6 +280,8 @@ edf["arr"] = edf.apply(lambda x: np.arange(
 edf["mass"] = (mdf.loc[edf.index]*mass_blowup).astype(np.uint64)
 elements=edf.index.values
 params["elements"]=elements.tolist()
+metcols=np.hstack([np.argwhere(elements==m)[:,0] for m in metals])
+
 
 bitlim=np.uint8
 if edf.high.max()>255: 
@@ -324,7 +343,9 @@ if filt_7gr=="Common":
     filt_LewisSenior=True
     filt_nops=True
     filt_ratios="HC[0.2,3.1]FC[0,1.5]ClC[0,0.8]BrC[0,0.8]NC[0,1.3]OC[0,1.2]PC[0,0.3]SC[0,0.8]SiC[0,0.5]" #common ratio range
+    min_rdbe=0
     
+
     
 if filt_7gr=="Extended":
     filt_LewisSenior=True
@@ -644,9 +665,11 @@ if need_batches:
                 for x,row in nops.iterrows():
                     qr=qr & ((~np.all(zm[:,nops.loc[x,"ixs"]]>row.lim,axis=1)) | (np.all(zm[:,nops_ixs]<row.values[2:-1],axis=1)))   
             
-            #calculate emp here?
-            
-            
+            #Multimetal filtering
+            if filt_multimetal>0:
+                if len(metcols):
+                    qr=qr & np.sum(zm[:,metcols]>0,axis=1)<=filt_multimetal              
+
             ##### write in partitions #####
             for p in range(partitions):
                 l,r=umparts[p],umparts[p+1]
@@ -795,7 +818,15 @@ if not need_batches:
             q=q & ((~np.all(zm[:,nops.loc[x,"ixs"]]>row.lim,axis=1)) | (np.all(zm[:,nops_ixs]<row.values[2:-1],axis=1)))  #OR above lim OR 
         mass,zm=mass[q],zm[q]
 
-    
+
+    #Multimetal filtering
+    if filt_multimetal>0:
+        if len(metcols):
+            q=np.sum(zm[:,metcols]>0,axis=1)<=filt_multimetal              
+            mass,zm=mass[q],zm[q]
+
+
+
     #### write outputs ####
     np.save(comp_output_path, zm)
     emp[:(mass.max()+1).astype(int),1]=np.bincount(mass.astype(np.int64))
