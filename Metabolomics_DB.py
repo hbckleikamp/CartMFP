@@ -35,14 +35,24 @@ base_vars=list(locals().copy().keys()) #base variables
 
 # %% Arguments
 
-#composition arguments
+#composition arguments (Default)
 composition="H[200]C[75]N[50]O[50]P[10]S[10]"   # default: H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]
 max_mass = 1000         # default 1000
 min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
 max_rdbe = 80
+filt_7gr="Common"                                                                   #False,True,"Common","Extended",Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
+
+#big GNPS db
+composition="H[178]C[90]N[19]O[41]P[3]S[8]Br[6]Cl[10]F[34]I[6]"   # default: H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]
+composition+="Al[1]As[1]Au[1]B[1]Co[1]Cr[1]Cu[1]Fe[1]Ge[2]Hg[1]K[1]Mg[1]Na[3]Ni[1]Pd[1]Pt[1]Se[2]Si[6]Sn[2]Zn[1]"
+max_mass = 1500         # default 1000
+min_rdbe = -6           # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
+max_rdbe = 61
+filt_7gr="Extended"
+
+
 
 #advanced chemical rules
-filt_7gr="Common"                                                                   #False,True,"Common","Extended",Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
 filt_LewisSenior=True                                                               #Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence)
 filt_ratios="HC[0,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]"    #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage
 filt_NOPS=True                                                                      #Golden Rules #6:   Filter on NOPS probabilities
@@ -138,6 +148,16 @@ def cartesian(arrays, bitlim=np.uint8, out=None):
         for j in range(1, arrays[0].size):
             out[j*m:(j+1)*m, 1:] = out[0:m, 1:]
     return out
+
+
+from itertools import combinations, product
+def limited_cartesian(vectors, k):
+    results = []
+    for idxs in combinations(range(len(vectors)), k):
+        vecs = [vectors[i] for i in idxs]
+        for values in product(*vecs):
+            results.append((idxs, values))
+    return results
 
 
 # read input table (dynamic delimiter detection)
@@ -279,6 +299,12 @@ edf["high"]=np.clip(edf["high"],0,(max_mass/mdf.loc[edf.index]).astype(int)) #li
 
 
 edf = edf.sort_values(by="high", ascending=False)
+
+if filt_multimetal: #put metals last
+    q=edf.index.isin(metals)
+    edf=pd.concat([edf[~q],edf[q]]) 
+
+
 edf["arr"] = edf.apply(lambda x: np.arange(
     x.loc["low"], x.loc["high"]+1), axis=1)
 edf["fmass"] = mdf.loc[edf.index] #float mass
@@ -447,7 +473,7 @@ m2g_output_path  =         basepath+"_m2g.npy"
 
 if write_params: 
     import json
-    params.update({"column_masses":edf.fmass.values}) #add column masses
+    params.update({"column_masses":edf.fmass.values.tolist()}) #add column masses
     with open(basepath+".params", 'w') as f:
         json.dump(params, f)
 
@@ -507,13 +533,44 @@ mass, zm = mass[s], zm[s]
 print("")
 if need_batches:
 
-    batches = reduce(operator.mul, edf.iloc[mem_cols:]["high"].values+1, 1)
+    #batches = reduce(operator.mul, edf.iloc[mem_cols:]["high"].values+1, 1)
     
-    # compute cartesian product of the remaining elements
-    arrays = edf.arr.values[mem_cols:].tolist()
     print("")
     print("computing remaining cartesian:")
-    bm = cartesian(arrays,bitlim=bitlim)
+
+    
+
+    
+    # compute cartesian product of the remaining elements
+    if filt_multimetal:
+        rows=edf[mem_cols:]
+        q=rows.index.isin(metals)
+
+        #nonmetallic batches
+        bm = cartesian(rows.arr[~q].values.tolist(),bitlim=bitlim) #if so, go for a generator-type code? 
+        
+        bm=np.hstack([bm,np.zeros((len(bm),q.sum()),bitlim)]) #pad space for metals
+        
+        #metallic batches
+        mbs=limited_cartesian([i[i>0] for i in rows.arr[q]],k=filt_multimetal)
+
+        bms=[bm]
+        for r in mbs:
+            a=bm.copy()
+            a[:,bm.shape[1]-q.sum()+r[0][0]]=r[1][0]
+            bms.append(a)
+        bm=np.vstack(bms)
+        del bms, mbs
+        
+    else:
+
+        #this can lead into memory problems when too many elements are present
+        arrays = edf.arr.values[mem_cols:].tolist()
+        bm = cartesian(arrays,bitlim=bitlim) #if so, go for a generator-type code? 
+    
+
+
+    
     am = ((bm*mdf.loc[edf.index].values[mem_cols:].reshape(1,-1)).sum(axis=1)*mass_blowup).round(0).astype(np.int64) 
     s=np.argsort(am)
     am,bm=am[s],bm[s]
