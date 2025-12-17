@@ -403,7 +403,7 @@ if not filt_7gr: #turn of 7gr [except for custom filt_ratios]
 
 
 
-if not "[" in filt_ratios: filt_ratios=False
+if not "[" in str(filt_ratios): filt_ratios=False
     
 #parse chemical ratios [Golden rules #4,5]
 erats,batch_rats=[],[]
@@ -1062,4 +1062,5 @@ emp.flush()
 
 # comps = np.load(comp_output_path, mmap_mode="r")
 # m = np.load(mass_output_path, mmap_mode="r") #test
+
 # abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
