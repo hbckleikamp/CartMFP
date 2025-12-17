@@ -527,19 +527,20 @@ if max_mass:
     mass = mass[mass <= max_mass*mass_blowup]
 
 #prefilter on elemental ratios [Golden rules #4,5]
-pre_els=np.array(edf.index[:mem_cols])
-prerats=erats[(erats[["l","r"]].isin(pre_els)).all(axis=1)]
-
-if len(prerats):
-    q=(prerats["lix"]<mem_cols) &  (prerats["rix"]<mem_cols)    
-    base_rats,batch_rats=prerats[q],prerats[~q]
+if len(erats):
+    pre_els=np.array(edf.index[:mem_cols])
+    prerats=erats[(erats[["l","r"]].isin(pre_els)).all(axis=1)]
     
-    #prefilter on chemical ratios
-    q=np.ones(len(mass),bool)
-    for _,rat in base_rats.iterrows():
-        r=zm[:,rat.lix]/zm[:,rat.rix]
-        q=q & ((~np.isfinite(r)) | ((r>=rat.low) & (r<=rat.high)))
-    mass,zm=mass[q],zm[q]
+    if len(prerats):
+        q=(prerats["lix"]<mem_cols) &  (prerats["rix"]<mem_cols)    
+        base_rats,batch_rats=prerats[q],prerats[~q]
+        
+        #prefilter on chemical ratios
+        q=np.ones(len(mass),bool)
+        for _,rat in base_rats.iterrows():
+            r=zm[:,rat.lix]/zm[:,rat.rix]
+            q=q & ((~np.isfinite(r)) | ((r>=rat.low) & (r<=rat.high)))
+        mass,zm=mass[q],zm[q]
 
 
 if zm.max()<256: bitlim=np.uint8
@@ -1078,4 +1079,5 @@ emp.flush()
 # m = np.load(mass_output_path, mmap_mode="r") #test
 
 # abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
+
 
