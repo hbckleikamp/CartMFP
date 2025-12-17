@@ -923,6 +923,8 @@ if need_batches:
             
             #precise float mass (memory efficient batched addition) 
             mi = np.zeros(len(comps), dtype=np.uint64)
+            q  = np.ones(len(comps), dtype=bool)
+            
             if write_mass: mf = np.zeros(len(comps), dtype=np.float32) #can be made full float64 for furter speedup
             remRam=maxRam-(mm.free-psutil.virtual_memory().free)
             stepsize=np.round(remRam/(a64*len(edf))/2,0).astype(int)
@@ -930,8 +932,14 @@ if need_batches:
             for im in range(len(ixs)-1):                
                 f=np.sum(comps[ixs[im]:ixs[im+1]]*mdf.loc[edf.index].values.T,axis=1) #float calculation
                 mi[ixs[im]:ixs[im+1]]=(f*mass_blowup).round(0).astype(int)
+                q[ixs[im]:ixs[im+1]]=(f<(len(emp)/mass_blowup)+1)             
                 if write_mass: mf[ixs[im]:ixs[im+1]]=f
                 del f
+                
+            #can surpass max mass? (shouldnt be able to?)
+            if np.any(q==False):
+                mi,comps=mi[q],comps[q]
+                if write_mass: mf=mf[q]
         
             uc=np.bincount(mi.astype(np.int64)).astype(count_bit)
             emp[:len(uc),1]+=uc
@@ -1044,6 +1052,12 @@ if not need_batches:
             q=np.sum(zm[:,metcols]>0,axis=1)<=filt_multimetal              
             mass,zm=mass[q],zm[q]
 
+    #Halogen filtering
+    if filt_halogens>0:
+        if len(halcols):
+            q=np.sum(zm[:,halcols]>0,axis=1)<=filt_halogens            
+            mass,zm=mass[q],zm[q]
+                
     #### write outputs ####
     np.save(comp_output_path, zm)
     emp[:(mass.max()+1).astype(int),1]=np.bincount(mass.astype(np.int64))
@@ -1064,3 +1078,4 @@ emp.flush()
 # m = np.load(mass_output_path, mmap_mode="r") #test
 
 # abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
+
