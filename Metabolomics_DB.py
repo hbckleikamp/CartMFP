@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Oct 29 13:20:05 2024
+Created on Tue Dec 16 13:48:02 2025
 
-@author: hkleikamp
+@author: e_kle
 """
-
 
 
 #%% Modules
@@ -40,23 +39,20 @@ composition="H[200]C[75]N[50]O[50]P[10]S[10]"   # default: H[0,200]C[0,75]N[0,50
 max_mass = 1000         # default 1000
 min_rdbe = -5           # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
 max_rdbe = 80
-filt_7gr="Common"                                                                   #False,True,"Common","Extended",Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
-
-#big GNPS db
-composition="H[178]C[90]N[19]O[41]P[3]S[8]Br[6]Cl[10]F[34]I[6]"   # default: H[0,200]C[0,75]N[0,50]O[0,50]P[0,10]S[0,10]
-composition+="Al[1]As[1]Au[1]B[1]Co[1]Cr[1]Cu[1]Fe[1]Ge[2]Hg[1]K[1]Mg[1]Na[3]Ni[1]Pd[1]Pt[1]Se[2]Si[6]Sn[2]Zn[1]"
-max_mass = 1500         # default 1000
-min_rdbe = -6           # rdbe filtering default range -5,80 (max rdbe will depend on max mass range)
-max_rdbe = 61
-filt_7gr="Extended"
-
 
 
 #advanced chemical rules
+filt_7gr="Common"                                                                   #False,True,"Common","Extended",Toggles all advanced chemical filtering using rules #2,4,5,6 of Fiehn's "7 Golden Rules" 
 filt_LewisSenior=True                                                               #Golden Rule  #2:   Filter compositions with non integer dbe (based on max valence)
 filt_ratios="HC[0,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]"    #Golden Rules #4,5: Filter on chemical ratios with extended range 99.9% coverage
 filt_NOPS=True                                                                      #Golden Rules #6:   Filter on NOPS probabilities
-filt_multimetal=1                                                                   #only allow a single metallic atom type
+
+#additional rules
+filt_multimetal=1                                                                   #only allow x different metallic atom types
+filt_halogens  =2                                                                   #only allow x different halogen atom types
+
+halogens=["Br","Cl","F","I"]
+
 metals=["Na","Mg","Al","Si","K","Ca","Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga","Ge","As","Se",
         "Rb","Sr","Y","Zr","Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Sb","Te","Cs","Ba","la","Ce",
         "Pr","Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb","Lu","Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg","Tl","Pb"]
@@ -274,18 +270,22 @@ edf=edf.ffill(axis=1)
 
 
 if filt_7gr=="Common": #max element count restriction (Wiley/DNP)
-    crep=pd.DataFrame([[ 39, 72,20,20,9,10,16,10, 4,  8],
-                       [ 78,126,25,27,9,14,34,12, 8, 14],
-                       [156,236,32,63,9,14,48,12,10, 15],
-                       [162,236,48,78,9,14,48,12,10, 15]],
+    crep=pd.DataFrame([[ 39, 72,20,20,9,10,16,10, 4, 4,  8],
+                       [ 78,126,25,27,9,14,34,12, 8, 8, 14],
+                       [156,236,32,63,9,14,48,12,10,10, 15],
+                       [162,236,48,78,9,14,48,12,10,10, 15]],
                       index=[500,1000,2000,3000],
-                      columns=["C","H","N","O","P","S","F","Cl","Br","Si"])
+                      columns=["C","H","N","O","P","S","F","Cl","Br","I","Si"])
     
     for n,r in crep.iterrows():
         if n>=max_mass: 
             m=edf.merge(r,left_index=True,right_index=True,how="left")
-            edf.loc[m.index,"high"]=m[n].values
-            break
+            #edf.loc[m.index,"high"]=m[n].values             #this overwrites compositional space values!
+            
+            #instead overwrite crep with minimum 
+            mrep=m[["high",n]].min(axis=1)        
+            crep.loc[n,mrep.index]=mrep.values
+
             
         
 
@@ -300,6 +300,11 @@ edf["high"]=np.clip(edf["high"],0,(max_mass/mdf.loc[edf.index]).astype(int)) #li
 
 edf = edf.sort_values(by="high", ascending=False)
 
+
+if filt_halogens: #put halogens last
+    q=edf.index.isin(halogens)
+    edf=pd.concat([edf[~q],edf[q]]) 
+
 if filt_multimetal: #put metals last
     q=edf.index.isin(metals)
     edf=pd.concat([edf[~q],edf[q]]) 
@@ -312,6 +317,7 @@ edf["mass"]  = (edf["fmass"]*mass_blowup).astype(np.uint64)
 elements=edf.index.values
 params["elements"]=elements.tolist()
 metcols=np.hstack([np.argwhere(elements==m)[:,0] for m in metals])
+halcols=np.hstack([np.argwhere(elements==m)[:,0] for m in halogens])
 
 if filt_7gr=="Common": #determine column order for Common max element filtering
     mc=edf.index.isin(crep.columns)   
@@ -380,13 +386,13 @@ need_batches = len(edf)-mem_cols
 if filt_7gr=="Common":
     filt_LewisSenior=True
     filt_nops=True
-    filt_ratios="HC[0.2,3.1]FC[0,1.5]ClC[0,0.8]BrC[0,0.8]NC[0,1.3]OC[0,1.2]PC[0,0.3]SC[0,0.8]SiC[0,0.5]" #common ratio range
-    min_rdbe=0
+    filt_ratios="HC[0.2,3.1]FC[0,1.5]ClC[0,0.8]BrC[0,0.8]BrI[0,0.8]NC[0,1.3]OC[0,1.2]PC[0,0.3]SC[0,0.8]SiC[0,0.5]" #common ratio range
+    #min_rdbe=0
     
 if filt_7gr=="Extended":
     filt_LewisSenior=True
     filt_nops=True
-    filt_ratios="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]" #extended ratio range
+    filt_ratios="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]IC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]" #extended ratio range
 
 if not filt_7gr: #turn of 7gr [except for custom filt_ratios]
     filt_LewisSenior=False
@@ -520,73 +526,123 @@ if max_mass:
     zm = zm[mass <= max_mass*mass_blowup]
     mass = mass[mass <= max_mass*mass_blowup]
 
-if zm.max()<256: bitlim=np.uint8
+#prefilter on elemental ratios [Golden rules #4,5]
+pre_els=np.array(edf.index[:mem_cols])
+prerats=erats[(erats[["l","r"]].isin(pre_els)).all(axis=1)]
+
+if len(prerats):
+    q=(prerats["lix"]<mem_cols) &  (prerats["rix"]<mem_cols)    
+    base_rats,batch_rats=prerats[q],prerats[~q]
     
+    #prefilter on chemical ratios
+    q=np.ones(len(mass),bool)
+    for _,rat in base_rats.iterrows():
+        r=zm[:,rat.lix]/zm[:,rat.rix]
+        q=q & ((~np.isfinite(r)) | ((r>=rat.low) & (r<=rat.high)))
+    mass,zm=mass[q],zm[q]
+
+
+if zm.max()<256: bitlim=np.uint8
+
+
+
 # add room for remaining columns
 zm = np.hstack(
     [zm, np.zeros([len(zm), len(edf)-mem_cols], dtype=bitlim)])
-s = np.argsort(mass,kind="mergesort")  
-mass, zm = mass[s], zm[s]
 
 
-# compute cartesian batches
-print("")
+
+
+#%% calculate base batch
+
 if need_batches:
 
     #batches = reduce(operator.mul, edf.iloc[mem_cols:]["high"].values+1, 1)
     
     print("")
     print("computing remaining cartesian:")
-
     
-
+    #base batches (this causes memory problems when too many elements are present)
+    rows=edf[mem_cols:]
+    es,arrays=rows.index,rows.arr.values
+    q=np.ones(len(arrays),bool)
+    if filt_halogens:   q=(q) & (~es.isin(halogens))
+    if filt_multimetal: q=(q) & (~es.isin(metals))
+    arrays=arrays[q]
     
-    # compute cartesian product of the remaining elements
+    if len(arrays): bm = cartesian(arrays,bitlim=bitlim) 
+    else:           bm=np.zeros((1,len(es)),bitlim)
+    base_mass=np.sum(bm*rows.mass.values,axis=1)
+
+
+    #halogen batches
+    if filt_halogens:
+        q=rows.index.isin(halogens)
+        if q.sum():
+            zhals=[]
+            for k in np.arange(1,filt_halogens+1):
+                mbs=limited_cartesian([i[i>0] for i in rows.arr[q]],k=k)
+                zhal=np.zeros((len(mbs),q.sum()),bitlim)
+                for rx,r in enumerate(mbs):
+                    zhal[rx,r[0]]=r[1]
+                zhals.append(zhal)
+            zhals=np.vstack(zhals)
+            nbm=np.zeros((len(zhals),len(es)),bitlim)
+            nbm[:,q]=zhals
+            
+            #filter mass
+            halo_mass=np.sum(zhals*rows[q].mass.values,axis=1)
+            f=halo_mass<max_mass*mass_blowup
+            zhals,halo_mass=zhals[f],halo_mass[f]
+            
+            #loop for each row in bm
+            fbm=[bm]
+            for rx,r in enumerate(bm):
+                f=(halo_mass+base_mass)<max_mass*mass_blowup
+                fbm.append(r+zhals[f])
+            bm=np.vstack(fbm)
+            del fbm
+        
+    #metal batches
     if filt_multimetal:
-        rows=edf[mem_cols:]
         q=rows.index.isin(metals)
+        if q.sum():
+            zmets=[]
+            for k in np.arange(1,filt_multimetal+1):
+                mbs=limited_cartesian([i[i>0] for i in rows.arr[q]],k=k)
+                zmet=np.zeros((len(mbs),q.sum()),bitlim)
+                for rx,r in enumerate(mbs):
+                    zmet[rx,r[0]]=r[1]
+                zmets.append(zmet)
+            zmets=np.vstack(zmets)
+            nbm=np.zeros((len(zmets),len(es)),bitlim)
+            nbm[:,q]=zmets
+            
+            #filter mass
+            halo_mass=np.sum(zmets*rows[q].mass.values,axis=1)
+            f=halo_mass<max_mass*mass_blowup
+            zmets,halo_mass=zmets[f],halo_mass[f]
+            
+            #loop for each row in bm
+            fbm=[bm]
+            for rx,r in enumerate(bm):
+                f=(halo_mass+base_mass)<max_mass*mass_blowup
+                fbm.append(r+zmets[f])
+            bm=np.vstack(fbm)
+            del fbm
 
-        #nonmetallic batches
-        bm = cartesian(rows.arr[~q].values.tolist(),bitlim=bitlim) #if so, go for a generator-type code? 
-        
-        bm=np.hstack([bm,np.zeros((len(bm),q.sum()),bitlim)]) #pad space for metals
-        
-        #metallic batches
-        mbs=limited_cartesian([i[i>0] for i in rows.arr[q]],k=filt_multimetal)
 
-        bms=[bm]
-        for r in mbs:
-            a=bm.copy()
-            a[:,bm.shape[1]-q.sum()+r[0][0]]=r[1][0]
-            bms.append(a)
-        bm=np.vstack(bms)
-        del bms, mbs
-        
-    else:
-
-        #this can lead into memory problems when too many elements are present
-        arrays = edf.arr.values[mem_cols:].tolist()
-        bm = cartesian(arrays,bitlim=bitlim) #if so, go for a generator-type code? 
-    
+    #resort edf and bm
+    us=[np.array(list(set(i))) for i in bm.T]
+    ls=[len(i) for i in us]
+    s=np.argsort(ls)
+    us,ls=[us[i] for i in s],[ls[i] for i in s]
+    edf=pd.concat([edf[:mem_cols],edf[mem_cols:].iloc[s]])
 
 
-    
-    am = ((bm*mdf.loc[edf.index].values[mem_cols:].reshape(1,-1)).sum(axis=1)*mass_blowup).round(0).astype(np.int64) 
-    s=np.argsort(am)
-    am,bm=am[s],bm[s]
-    q=am<=bmax
-    am,bm=am[q],bm[q]
-    batches=len(am)
-    print("array too large for memory, performing cartesian product in batches: "+str(batches))
-    
-print("")
 
-#%% Write unsorted array
 
-emp = open_memmap(m2g_output_path, mode="w+", shape=(bmax+1*mass_blowup,2),dtype=bits(bmax))
-
-if need_batches:
-
+    #%% pre filtering
     
     #precompute rdbe
     if flag_rdbe_max or flag_rdbe_min:
@@ -647,6 +703,82 @@ if need_batches:
             
         mass,zm=mass[q],zm[q]
 
+
+    
+
+    #%% try to expand base
+
+    print("Expanding base cartesian")
+
+    #initialize
+    expand_col=0
+    
+    while maxRam/(sys.getsizeof(mass)+sys.getsizeof(zm))>ls[expand_col]:
+        print(expand_col)
+        sub_batch=us[expand_col]
+        sub_batch=sub_batch[sub_batch>0]
+        col=mem_cols+expand_col
+        
+        #get erat columns
+        el=edf.index[col]
+        rr=erats[(erats[["l","r"]]==e).any(axis=1)]
+        
+        hal=edf.index[:col+1].isin(halogens) #get halo columns
+        met=edf.index[:col+1].isin(halogens) #get metal columns
+  
+        
+        zms,ms=[zm],[mass]
+        for b in sub_batch:
+            mat=zm.copy()
+            mat[:,col]=b
+            
+            q=np.ones(len(zm),bool)
+            
+            #max mass filter
+            sbm=edf.mass.values[col]      
+            q=q & (mass<max_mass*mass_blowup-sbm)
+            
+            if len(rr): #filt elemental ratios
+                for _,rat in rr.iterrows():
+                    r=zm[:,rat.lix]/zm[:,rat.rix]
+                    q=q & ((~np.isfinite(r)) | ((r>=rat.low) & (r<=rat.high)))
+        
+            if filt_halogens & sum(hal)>filt_halogens: #filt max halogens
+                q=q & (zm[:,np.argwhere(hal)[:,0],].sum(axis=1)<=filt_halogens)
+
+            if filt_multimetal & sum(met)>filt_multimetal: #filt max metals
+                q=q & (zm[:,np.argwhere(met)[:,0],].sum(axis=1)<=filt_multimetal)
+            
+            zms.append(mat[q])
+            ms.append(mass[q]+sbm)
+            
+        zm,mass=np.vstack(zms),np.hstack(ms)
+        del zms,ms
+        
+        expand_col+=1
+      
+        #%%
+    mem_cols+=expand_col #update memcols
+    bm=np.unique(bm[:,expand_col:],axis=0)
+    if not len(bm): need_batches=False
+   
+s = np.argsort(mass)  #default instead of mergesort
+mass, zm = mass[s], zm[s]
+emp = open_memmap(m2g_output_path, mode="w+", shape=(bmax+1*mass_blowup,2),dtype=bits(bmax))
+
+#%%
+if need_batches:
+    am  = ((bm*mdf.loc[edf.index].values[mem_cols:].reshape(1,-1)).sum(axis=1)*mass_blowup).round(0).astype(np.int64)
+    
+    s=np.argsort(am)
+    am,bm=am[s],bm[s]
+    q=am<=bmax
+    am,bm=am[q],bm[q]
+    batches=len(am)
+    print("array too large for memory, performing cartesian product in batches: "+str(batches))
+    
+    
+    
     #re-calculate base rdbe and base dbe
     if flag_rdbe_max or flag_rdbe_min:
         base_rdbe = np.ones(len(zm), dtype=rdbe_bitlim)*2
@@ -672,11 +804,14 @@ if need_batches:
     vs=np.add.reduceat(mc,xs)
     czs=np.cumsum(vs*[np.sum(x>am) for x in xs])
     mass_ixs=np.hstack([np.interp(np.linspace(0,czs[-1],partitions+1),czs,xs).astype(int)])[1:-1]
+    
 
+
+    #%% Write unsorted array
 
     qtrim=len(zm)
 
-    #%%
+
     with ExitStack() as stack:
         files = [stack.enter_context(NpyAppendArray(fname, delete_if_exists=True) ) for fname in memfiles]
 
@@ -688,9 +823,9 @@ if need_batches:
             q=(mass<=(bmax-am[ib]))
             if not q[-1]: qtrim=np.argmax(~q) 
             zm,mass=zm[:qtrim],mass[:qtrim] #truncate mass
-        
+            if not len(mass): continue
+                
             zm[:,mem_cols:]=bm[ib]
-            
             ### find partitions
             umparts=[]
             if len(mass_ixs):
@@ -708,7 +843,7 @@ if need_batches:
                     umparts=np.hstack([[0]*np.sum(~q),bs[:,0]+np.array([np.argmax(d[ixs[i]:ixs[i+1]]) for i,_ in enumerate(ixs[:-1])])]).astype(int)
             umparts=np.hstack([0,umparts,len(zm)]).astype(int)
             
-      
+            
             ##### chemical filtering #####
         
             qr=np.ones(len(zm),bool)
@@ -737,11 +872,17 @@ if need_batches:
             if filt_7gr=="Common":
                 xs=np.hstack([0,np.searchsorted(mass+am[ib],crep.index),len(qr)]) 
                 qr=qr & np.hstack([np.all(zm[xs[ix]:xs[ix+1],mcx]<row,axis=1) for ix,row in enumerate(crep.values)])
-                      
-            #Multimetal filtering
-            if filt_multimetal>0:
+            
+            #Multihalogen filtering
+            if filt_halogens>0:
                 if len(metcols):
-                    qr=qr & np.sum(zm[:,metcols]>0,axis=1)<=filt_multimetal              
+                    qr=qr & np.sum(zm[:,metcols]>0,axis=1)<=filt_multimetal   
+            
+            #Multimetal filtering
+            if filt_halogens>0:
+                if len(halcols):
+                    qr=qr & np.sum(zm[:,halcols]>0,axis=1)<=filt_halogens              
+
 
             ##### write in partitions #####
             for p in range(partitions):
