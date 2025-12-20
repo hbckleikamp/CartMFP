@@ -757,6 +757,7 @@ if need_batches:
         del zms,ms
         
         expand_col+=1
+        if expand_col>=len(ls): break
       
         #%%
     mem_cols+=expand_col #update memcols
@@ -1079,5 +1080,6 @@ emp.flush()
 # m = np.load(mass_output_path, mmap_mode="r") #test
 
 # abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
+
 
 
