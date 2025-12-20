@@ -762,7 +762,7 @@ if need_batches:
         #%%
     mem_cols+=expand_col #update memcols
     bm=np.unique(bm[:,expand_col:],axis=0)
-    if not len(bm): need_batches=False
+    if not len(bm.flatten()): need_batches=False
    
 s = np.argsort(mass)  #default instead of mergesort
 mass, zm = mass[s], zm[s]
@@ -1080,6 +1080,7 @@ emp.flush()
 # m = np.load(mass_output_path, mmap_mode="r") #test
 
 # abs(m-np.sum(comps*mdf.loc[elements].values,axis=1)).max()
+
 
 
 
