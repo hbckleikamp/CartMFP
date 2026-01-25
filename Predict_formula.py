@@ -467,10 +467,7 @@ def predict_formula(
 
 
     if pre_filter_mass:
-        
-        timings.append([time.time()-start,"MFP"])
-        start=time.time()
-        
+    
         c=np.array([1]*len(pmi)).astype(int)
         
         
@@ -506,9 +503,6 @@ def predict_formula(
         res=np.vstack(res)
         a_ix=res[:,0]
         um=pmi[a_ix]+res[:,1]
-        
-        timings.append([time.time()-start,"pre filter"])
-        start=time.time()
    
     else:
         um=(np.repeat(pmi-d,dd)+(np.arange(dd.sum()) - np.repeat(np.cumsum(dd)-dd, dd))).astype(np.uint64)
