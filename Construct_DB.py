@@ -61,7 +61,6 @@ write_mass=False         # also writes float array of masses
 
 #filepaths
 mass_table = str(Path(basedir, "mass_table.tsv"))           # table containing element masses, default: CartMFP folder/ mass_table.tsv"
-#Output_folder = str(Path(basedir, "CartMFP_Database")) # default: CartMFP folder / Cart_Output
 Output_folder = str(Path(basedir, "CartMFP_test")) # default: CartMFP folder / Cart_Output
 Output_file=""  
 
@@ -70,136 +69,6 @@ sparse_index=True #store index file as sparse matrix
 remove=True #removes unsorted composition file and sorted index file after building sorted array
 debug=False #True
 
-
-# #tests
-# max_mass=1200 
-# max_rdbe=92.0 
-# composition="H[0,240]C[0,90]N[0,60]O[0,60]P[0,12]S[0,12]"
-
-# max_mass=1400
-# max_rdbe=104.0
-# composition="H[0,280]C[0,105]N[0,70]O[0,70]P[0,14]S[0,14]"  
-
-# max_mass=200 
-# composition="C[1,16]H[43]N[6]O[7]P[3]S[5]"#"Br[6]Cl[7]F[28]I[5]" 
-# max_rdbe=13 
-# min_rdbe=-4 
-
-# max_mass=600 
-# composition="C[10,44]H[82]N[11]O[19]P[3]S[5]Br[6]Cl[7]F[28]I[5]"
-# max_rdbe=26 
-# min_rdbe=3
-
-# max_mass=800
-# max_rdbe=32 
-# min_rdbe=-2 
-# composition="C[14,58]H[108]N[13]O[25]P[3]S[5]Br[6]Cl[7]F[28]I[5]" 
-
-# max_mass=1000
-# max_rdbe=39 
-# min_rdbe=-1 
-# composition="C[18,72]H[134]N[15]O[30]P[3]S[5]Br[6]Cl[7]F[28]I[5]" 
-
-# max_mass=1600 
-# max_rdbe=58 
-# min_rdbe=-5 
-# composition="C[113]H[211]N[22]O[48]P[3]S[5]Br[6]Cl[7]F[28]I[5]" 
-
-# filt_7gr=False
-# max_mass=1800 
-# max_rdbe=64 
-# min_rdbe=-5
-# composition="C[127]H[237]N[24]O[54]P[3]S[5]" 
-
-# max_mass=2000
-# max_rdbe=70 
-# min_rdbe=-5 
-# composition="C[141]H[262]N[26]O[59]P[3]S[5]" 
- 
-# max_mass=1000
-# filt_7gr="Common"
-# composition="C[72]H[134]N[15]O[30]P[3]S[5]"
-# min_rdbe=-5
-# max_rdbe=39
-
-# max_mass=800
-# max_rdbe=32 
-# min_rdbe=-5 
-# composition="C[58]H[108]N[13]O[25]P[3]S[5]Br[6]Cl[7]F[28]I[5]" 
-# filt_7gr="Common"
-
-# max_mass=1000
-# filt_7gr="Common"
-# min_rdbe=-5
-# max_rdbe=39
-# composition="C[72]H[134]N[15]O[30]P[3]S[5]Br[6]Cl[7]F[28]I[5]" 
-
-# max_mass=1600
-# max_rdbe=58 
-# min_rdbe=-5
-# composition="C[113]H[211]N[22]O[48]P[3]S[5]Br[6]Cl[7]F[28]I[5]"
-
-
-# max_rdbe=21.0 
-# min_rdbe=3.0 
-# composition="C[45]H[71]N[14]O[19]S[2]" 
-# max_mass=500 
-# Crdbes="D:/231225_CartMFP/DB_construction/C-centric_rdbes.csv"  
-# Crats="D:/231225_CartMFP/DB_construction/C-centric_ratios.csv" 
-# Output_folder="d:\231225_cartmfp\db_construction\chnos_peptides\Database"
-
-# max_mass=4500
-# filt_7gr=False
-# filt_halogens=0 
-# filt_multimetal=0
-# max_rdbe=102.5 
-# min_rdbe=0 
-# composition="C[247]H[389]N[77]O[79]S[6]" 
-# Crdbes="D:/231225_CartMFP/DB_construction/C-centric_rdbes.csv"  
-# Crats="D:/231225_CartMFP/DB_construction/C-centric_ratios.csv" 
-# Output_folder="d:\231225_cartmfp\db_construction\chnos_peptides\Database"
-
-# max_mass=3000
-# filt_7gr=False
-# filt_halogens=0 
-# filt_multimetal=0
-# max_rdbe=72.5 
-# min_rdbe=0 
-# composition="C[171]H[269]N[53]O[57]S[5]"
-# Crdbes="D:/231225_CartMFP/DB_construction/C-centric_rdbes.csv"  
-# Crats="D:/231225_CartMFP/DB_construction/C-centric_ratios.csv" 
-# Output_folder="d:\231225_cartmfp\db_construction\chnos_peptides\Database"
-
-
-
-
-
-# max_mass=1600
-# max_rdbe=58 
-# min_rdbe=-5
-# composition="C[113]H[211]N[22]O[48]P[3]S[5]Br[6]Cl[7]F[28]I[5]"
-# filt_7gr="Common"
-
-# filt_7gr="Common" 
-# mass_blowup=100000 
-# max_rdbe=39.0 
-# min_rdbe=-5.0 
-# composition="C[72]H[134]N[15]P[3]O[30]S[5]F[28]Cl[7]Br[6]I[5]Zn[1]" 
-# max_mass=1000 
-# Output_folder="d:\\231225_cartmfp\\heteroatom_annotation\\Database" 
-
-# #Si and Na!
-# #composition="C[72]H[134]N[15]P[3]O[30]S[5]F[28]Cl[7]Br[6]I[5]Si[6]" 
-
-# composition="C[72]H[134]N[15]P[3]O[30]S[5]F[28]Cl[7]Br[6]I[5]Na[3]" 
-# composition="C[72]H[134]N[15]P[3]O[30]S[5]F[28]Cl[7]Br[6]I[5]Si[6]"
-# composition="C[72]H[134]N[15]P[3]O[30]S[5]F[28]Cl[7]Br[6]I[5]" #"Si[6]"
-
-max_mass=1000
-filt_7gr="Common"
-min_rdbe=-5
-max_rdbe=39
-composition="C[72]H[134]N[15]P[3]O[30]S[5]"#F[28]Cl[7]Br[6]I[5]Si[6]" 
 
 #%% store parameters
 params={}
@@ -537,19 +406,19 @@ if type(filt_7gr)==str:
 
 if filt_7gr=="Common":
     filt_LewisSenior=True
-    filt_nops=True
+    filt_NOPS=True
     filt_ratios="HC[0.2,3.1]FC[0,1.5]ClC[0,0.8]BrC[0,0.8]IC[0,0.8]NC[0,1.3]OC[0,1.2]PC[0,0.3]SC[0,0.8]SiC[0,0.5]" #common ratio range
     #min_rdbe=0
     
 if filt_7gr=="Extended":
     filt_LewisSenior=True
-    filt_nops=True
+    filt_NOPS=True
     filt_ratios="HC[0.1,6]FC[0,6]ClC[0,2]BrC[0,2]IC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]" #extended ratio range
 
 if not filt_7gr or filt_7gr=="False": #turn of 7gr [except for custom filt_ratios]
     print("No 7gr filtering done!")
     filt_LewisSenior=False
-    filt_nops=False
+    filt_NOPS=False
     filt_ratios=False #if filt_ratios=="HC[0,6]FC[0,6]ClC[0,2]BrC[0,2]IC[0,2]NC[0,4]OC[0,3]PC[0,2]SC[0,3]SiC[0,1]": 
 
 if not "[" in str(filt_ratios): filt_ratios=False
@@ -558,7 +427,7 @@ if not "[" in str(filt_ratios): filt_ratios=False
 if write_params: #update params
     params["filt_7gr"]=filt_7gr
     params["filt_LewisSenior"]=filt_LewisSenior
-    params["filt_nops"]=filt_nops
+    params["filt_NOPS"]=filt_NOPS
     params["filt_ratios"]=filt_ratios
     
 
